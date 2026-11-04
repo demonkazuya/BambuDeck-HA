@@ -133,6 +133,16 @@ void onSettingsTFTFlip(lv_event_t *e)
     ui_confirmPanel_show(LV_SYMBOL_WARNING " Flip LCD\n" LV_SYMBOL_REFRESH " Reboot", onSettingsTFTFlipConfirm);
 }
 
+void onSettingsRecalibrateTouchConfirm()
+{
+    lv_msg_send(BAMBUDECK_SETTINGS_RESET_TOUCH, NULL);
+}
+
+void onSettingsRecalibrateTouch(lv_event_t *e)
+{
+    ui_confirmPanel_show(LV_SYMBOL_REFRESH " Recalibrate Touch?\nReboots into calibration", onSettingsRecalibrateTouchConfirm);
+}
+
 /* filament */
 void onNozzleUp(lv_event_t *e)
 {

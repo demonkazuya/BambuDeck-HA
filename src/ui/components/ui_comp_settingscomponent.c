@@ -644,6 +644,26 @@ lv_obj_t *ui_settingsComponent_create(lv_obj_t *comp_parent)
     lv_obj_set_style_text_color(cui_reconfigWifiButton, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_add_event_cb(cui_reconfigWifiButton, ui_event_comp_settingsComponent_reconfigWifiButton, LV_EVENT_CLICKED, NULL);
 
+    // Recalibrate Touch Button
+    lv_obj_t *cui_recalibrateTouchButton;
+    cui_recalibrateTouchButton = lv_label_create(cui_settingsComponent);
+    lv_obj_set_width(cui_recalibrateTouchButton, lv_pct(100));
+    lv_obj_set_height(cui_recalibrateTouchButton, LV_SIZE_CONTENT);
+    lv_label_set_text(cui_recalibrateTouchButton, LV_SYMBOL_REFRESH " Recalibrate Touch Screen");
+    lv_obj_add_flag(cui_recalibrateTouchButton, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(cui_recalibrateTouchButton, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scrollbar_mode(cui_recalibrateTouchButton, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_style_radius(cui_recalibrateTouchButton, 8, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(cui_recalibrateTouchButton, lv_color_hex(0x2C2C2C), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(cui_recalibrateTouchButton, lv_color_hex(0x444444), LV_PART_MAIN | LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(cui_recalibrateTouchButton, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_left(cui_recalibrateTouchButton, 14, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_right(cui_recalibrateTouchButton, 14, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_top(cui_recalibrateTouchButton, 12, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_bottom(cui_recalibrateTouchButton, 12, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(cui_recalibrateTouchButton, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_add_event_cb(cui_recalibrateTouchButton, onSettingsRecalibrateTouch, LV_EVENT_CLICKED, NULL);
+
     // Reboot Device Button
     lv_obj_t *cui_reseDeviceButton;
     cui_reseDeviceButton = lv_label_create(cui_settingsComponent);

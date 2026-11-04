@@ -49,6 +49,7 @@ extern "C"
     void onSettingsChamberFan(lv_event_t *e);
     void onSettingsChamberSensor(lv_event_t *e);
     void onSettingsTFTFlip(lv_event_t *e);
+    void onSettingsRecalibrateTouch(lv_event_t *e);
     void onSettingsOTA(lv_event_t *e);
     void onSettingsWOP(lv_event_t *e);
 

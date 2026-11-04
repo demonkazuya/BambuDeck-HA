@@ -123,6 +123,7 @@ inline void bambudeck_setupGlobalEvents()
     lv_msg_subscribe(BAMBUDECK_SETTINGS_TFT_FLIP, (lv_msg_subscribe_cb_t)bambudeck_events_onTFTFlip, NULL);
     lv_msg_subscribe(BAMBUDECK_SETTINGS_RECONFIG_WIFI, (lv_msg_subscribe_cb_t)bambudeck_events_onReconfigWifi, NULL);
     lv_msg_subscribe(BAMBUDECK_SETTINGS_CHECK_UPDATE, (lv_msg_subscribe_cb_t)bambudeck_events_onCheckUpdate, NULL);
+    lv_msg_subscribe(BAMBUDECK_SETTINGS_RESET_TOUCH, (lv_msg_subscribe_cb_t)bambudeck_events_onResetTouch, NULL);
 
     // Device command events
     lv_msg_subscribe(BAMBUDECK_COMMAND_LIGHT_TOGGLE, (lv_msg_subscribe_cb_t)bambudeck_device_onLightToggleCommand, NULL);
