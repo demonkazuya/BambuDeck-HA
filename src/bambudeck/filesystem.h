@@ -10,10 +10,20 @@
 
 inline bool bambudeck_filesystem_init()
 {
-    if (!LittleFS.begin(true))
+    // Try mounting without formatting first to protect existing configuration
+    if (!LittleFS.begin(false))
     {
-        ConsoleError.println(F("[BambuDeck][FS] LittleFS mount failed"));
-        return false;
+        ConsoleError.println(F("[BambuDeck][FS] LittleFS initial mount failed, retrying..."));
+        delay(150);
+        if (!LittleFS.begin(false))
+        {
+            ConsoleError.println(F("[BambuDeck][FS] LittleFS mount failed twice, formatting as fallback..."));
+            if (!LittleFS.begin(true))
+            {
+                ConsoleError.println(F("[BambuDeck][FS] LittleFS format and mount failed"));
+                return false;
+            }
+        }
     }
     if (!LittleFS.exists(bambudeck_paths_root))
     {

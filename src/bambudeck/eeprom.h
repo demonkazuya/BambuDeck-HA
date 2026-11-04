@@ -5,15 +5,16 @@
 #include <LittleFS.h>
 #include "paths.h"
 #include "debug.h"
+#include "filesystem.h"
 
 #define BAMBUDECK_EEPROM_SIZE 16
 #define BAMBUDECK_EEPROM_POS_TFTFLIP 0
 
 inline void bambudeck_eeprom_setup()
 {
-    if (!LittleFS.begin(true))
+    if (!bambudeck_filesystem_init())
     {
-        ConsoleError.println(F("[BambuDeck][EEPROM] LittleFS mount failed"));
+        ConsoleError.println(F("[BambuDeck][EEPROM] Filesystem init failed"));
         return;
     }
 

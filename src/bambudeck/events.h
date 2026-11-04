@@ -35,6 +35,12 @@ inline void bambudeck_events_onReconfigWifi(lv_msg_t *m)
 {
     (void)m;
     LittleFS.remove(bambudeck_paths_config);
+    Preferences prefs;
+    if (prefs.begin("bambudeck", false))
+    {
+        prefs.clear();
+        prefs.end();
+    }
     ESP.restart();
 }
 

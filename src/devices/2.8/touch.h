@@ -5,6 +5,7 @@
 #include <SPI.h>
 #include <XPT2046_Touchscreen.h>
 #include <ArduinoJson.h>
+#include <Preferences.h>
 #include "bambudeck/types.h"
 #include "bambudeck/filesystem.h"
 #include "bambudeck/paths.h"
@@ -41,38 +42,43 @@ inline ScreenPoint getScreenCoords(int16_t x, int16_t y)
     return ScreenPoint(xCoord, yCoord);
 }
 
-inline bool bambudeck_loadTouchConfig(BambuDeckPanelConfig &config)
+inline void bambudeck_touch_nvs_save(const BambuDeckPanelConfig &config)
 {
-    if (!bambudeck_filesystem_exist(bambudeck_paths_touch))
+    Preferences prefs;
+    if (prefs.begin("bambudeck_tch", false))
     {
+        prefs.putFloat("xCalM", config.xCalM);
+        prefs.putFloat("yCalM", config.yCalM);
+        prefs.putFloat("xCalC", config.xCalC);
+        prefs.putFloat("yCalC", config.yCalC);
+        prefs.putBool("valid", true);
+        prefs.end();
+        ConsoleInfo.println(F("[BambuDeck][Touch] Calibration backed up to NVS"));
+    }
+}
+
+inline bool bambudeck_touch_nvs_load(BambuDeckPanelConfig &config)
+{
+    Preferences prefs;
+    if (!prefs.begin("bambudeck_tch", true))
+        return false;
+    bool valid = prefs.getBool("valid", false);
+    if (!valid)
+    {
+        prefs.end();
         return false;
     }
-
-    File file = bambudeck_filesystem_open(bambudeck_paths_touch);
-    if (!file)
-        return false;
-
-    StaticJsonDocument<512> doc;
-    DeserializationError error = deserializeJson(doc, file);
-    file.close();
-
-    if (error || doc["xCalM"].isNull() || doc["yCalM"].isNull())
-    {
-        ConsoleError.println(F("[BambuDeck][Touch] Invalid touch calibration"));
-        return false;
-    }
-
-    config.xCalM = doc["xCalM"].as<float>();
-    config.yCalM = doc["yCalM"].as<float>();
-    config.xCalC = doc["xCalC"].as<float>();
-    config.yCalC = doc["yCalC"].as<float>();
+    config.xCalM = prefs.getFloat("xCalM", 0.0f);
+    config.yCalM = prefs.getFloat("yCalM", 0.0f);
+    config.xCalC = prefs.getFloat("xCalC", 0.0f);
+    config.yCalC = prefs.getFloat("yCalC", 0.0f);
+    prefs.end();
 
     if (config.xCalM == 0.0f || config.yCalM == 0.0f || isnan(config.xCalM) || isnan(config.yCalM))
     {
-        ConsoleError.println(F("[BambuDeck][Touch] Invalid calibration coefficients"));
         return false;
     }
-
+    ConsoleInfo.println(F("[BambuDeck][Touch] Calibration restored from NVS"));
     return true;
 }
 
@@ -85,19 +91,76 @@ inline void bambudeck_saveTouchConfig(BambuDeckPanelConfig &config)
     doc["yCalC"] = config.yCalC;
 
     bambudeck_filesystem_writeJson(bambudeck_paths_touch, doc);
+    bambudeck_touch_nvs_save(config);
+}
+
+inline bool bambudeck_loadTouchConfig(BambuDeckPanelConfig &config)
+{
+    bool loadedFromFs = false;
+    if (bambudeck_filesystem_exist(bambudeck_paths_touch))
+    {
+        File file = bambudeck_filesystem_open(bambudeck_paths_touch);
+        if (file)
+        {
+            StaticJsonDocument<512> doc;
+            DeserializationError error = deserializeJson(doc, file);
+            file.close();
+
+            if (!error && !doc["xCalM"].isNull() && !doc["yCalM"].isNull())
+            {
+                config.xCalM = doc["xCalM"].as<float>();
+                config.yCalM = doc["yCalM"].as<float>();
+                config.xCalC = doc["xCalC"].as<float>();
+                config.yCalC = doc["yCalC"].as<float>();
+
+                if (config.xCalM != 0.0f && config.yCalM != 0.0f && !isnan(config.xCalM) && !isnan(config.yCalM))
+                {
+                    loadedFromFs = true;
+                    bambudeck_touch_nvs_save(config);
+                }
+            }
+        }
+    }
+
+    if (loadedFromFs)
+        return true;
+
+    // Fallback to NVS if LittleFS file missing or corrupted
+    if (bambudeck_touch_nvs_load(config))
+    {
+        bambudeck_saveTouchConfig(config);
+        return true;
+    }
+
+    return false;
 }
 
 inline void bambudeck_resetTouchConfig()
 {
     ConsoleInfo.println(F("[BambuDeck][Touch] Resetting touch calibration"));
     bambudeck_filesystem_deleteFile(bambudeck_paths_touch);
+    Preferences prefs;
+    if (prefs.begin("bambudeck_tch", false))
+    {
+        prefs.clear();
+        prefs.end();
+    }
     delay(300);
     ESP.restart();
 }
 
 inline bool hasTouchConfig()
 {
-    return bambudeck_filesystem_exist(bambudeck_paths_touch);
+    if (bambudeck_filesystem_exist(bambudeck_paths_touch))
+        return true;
+    Preferences prefs;
+    if (prefs.begin("bambudeck_tch", true))
+    {
+        bool valid = prefs.getBool("valid", false);
+        prefs.end();
+        return valid;
+    }
+    return false;
 }
 
 inline void bambudeck_touch_setup()
