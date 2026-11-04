@@ -4,7 +4,7 @@
 
 int hms_error_length = 2017;
 
-const char *hms_error_keys[] PROGMEM = {
+const char * const hms_error_keys[] PROGMEM = {
   "0702200000020004",
   "0701200000010085",
   "0701110000010001",
@@ -2024,7 +2024,7 @@ const char *hms_error_keys[] PROGMEM = {
   "0500020000030011"
 };
 
-const char *hms_error_values[] PROGMEM = {
+const char * const hms_error_values[] PROGMEM = {
   "AMS C Slot 1 filament may be broken in the tool head.",
   "Failed to read the filament information from AMS B slot 1. RFID tag verification failed. You can try to use Bambu Lab filament.",
   "The AMS B slot 2 motor has slipped. The extrusion wheel may be malfunctioning, or the filament may be too thin.",
@@ -4046,7 +4046,7 @@ const char *hms_error_values[] PROGMEM = {
 
 int device_error_length = 490;
 
-const char *device_error_keys[] PROGMEM = {
+const char * const device_error_keys[] PROGMEM = {
   "07038012",
   "07004001",
   "07FF8003",
@@ -4539,7 +4539,7 @@ const char *device_error_keys[] PROGMEM = {
   "0502C01B"
 };
 
-const char *device_error_values[] PROGMEM = {
+const char * const device_error_values[] PROGMEM = {
   "Failed to get AMS mapping table; please select \"Resume\" to retry.",
   "The AMS has been disabled for a print, but it still has filament loaded. Please unload the AMS filament and switch to the spool holder filament for printing.",
   "Please pull out the filament on the spool holder. If this message persists, please check to see if there is filament broken in the extruder. (Connect a PTFE tube if you are about to use an AMS.)",
@@ -5036,7 +5036,7 @@ int message_containing_retry_total = 19;
 
 int message_containing_done_total = 2;
 
-const char *message_containing_retry[] PROGMEM = {
+const char * const message_containing_retry[] PROGMEM = {
 
   "07018004",
   "07018005",
@@ -5059,7 +5059,7 @@ const char *message_containing_retry[] PROGMEM = {
   "12FF8007"
 
 };
-const char *message_containing_done[] PROGMEM = {
+const char * const message_containing_done[] PROGMEM = {
 
   "07FF8007",
   "12FF8007"

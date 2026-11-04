@@ -34,16 +34,16 @@ const message_containing_done = [
 
 
 const getFlatRecordsKeysC = (root, varName) => {
-    return `const char *${varName}[] PROGMEM = {${JSON.stringify(root.map((e) => String(e.ecode)), null, 2).slice(1, -1)}};`;
+    return `const char * const ${varName}[] PROGMEM = {${JSON.stringify(root.map((e) => String(e.ecode)), null, 2).slice(1, -1)}};`;
 }
 const getFlatRecordsKeysH = (root, varName) => {
-    return `extern const char *${varName}[] PROGMEM;`;
+    return `extern const char * const ${varName}[] PROGMEM;`;
 }
 const getFlatRecordsValuesC = (root, varName = 0) => {
-    return `const char *${varName}[] PROGMEM = {${JSON.stringify(root.map((e) => String(e.intro)), null, 2).slice(1, -1)}};`;
+    return `const char * const ${varName}[] PROGMEM = {${JSON.stringify(root.map((e) => String(e.intro)), null, 2).slice(1, -1)}};`;
 }
 const getFlatRecordsValuesH = (root, varName = 0) => {
-    return `extern const char *${varName}[] PROGMEM;`;
+    return `extern const char * const ${varName}[] PROGMEM;`;
 }
 
 const getKeyValueLengthC = (root, varName) => {
@@ -81,10 +81,10 @@ https.get(url, (response) => {
                 getFlatRecordsValuesC(device_error, "device_error_values"),
                 `int message_containing_retry_total = ${message_containing_retry.length};`,
                 `int message_containing_done_total = ${message_containing_done.length};`,
-                `const char *message_containing_retry[] PROGMEM = {
+                `const char * const message_containing_retry[] PROGMEM = {
 ${JSON.stringify(message_containing_retry, null, 2).slice(1, -1)}
 };
-const char *message_containing_done[] PROGMEM = {
+const char * const message_containing_done[] PROGMEM = {
 ${JSON.stringify(message_containing_done, null, 2).slice(1, -1)}
 };`
             ].join('\n\n');
@@ -111,8 +111,8 @@ extern "C"
                 getFlatRecordsValuesH(device_error, "device_error_values"),
                 `extern int message_containing_retry_total;`,
                 `extern int message_containing_done_total;`,
-                `extern const char *message_containing_retry[] PROGMEM;`,
-                `extern const char *message_containing_done[] PROGMEM;`,
+                `extern const char * const message_containing_retry[] PROGMEM;`,
+                `extern const char * const message_containing_done[] PROGMEM;`,
                 `#ifdef __cplusplus
 }
 #endif

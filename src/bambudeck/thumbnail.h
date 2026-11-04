@@ -16,13 +16,27 @@
 #define BAMBUDECK_THUMB_W 120
 #define BAMBUDECK_THUMB_H 120
 #define BAMBUDECK_THUMB_PX_BYTES 2
+#define BAMBUDECK_THUMB_BUF_SIZE (BAMBUDECK_THUMB_W * BAMBUDECK_THUMB_H * BAMBUDECK_THUMB_PX_BYTES)
 #define BAMBUDECK_THUMB_PRINTING_ZOOM 171 // 80px / 120px * 256
 
-static uint8_t bambudeck_thumb_pixels[BAMBUDECK_THUMB_W * BAMBUDECK_THUMB_H * BAMBUDECK_THUMB_PX_BYTES];
+static uint8_t *bambudeck_thumb_pixels = NULL;
 static lv_img_dsc_t bambudeck_thumb_dsc;
 static volatile bool bambudeck_has_thumb = false;
 static char bambudeck_last_thumb_key[128] = "";
 static int bambudeck_thumb_retry_count = 0;
+
+inline bool bambudeck_thumb_alloc()
+{
+    if (!bambudeck_thumb_pixels)
+    {
+        bambudeck_thumb_pixels = (uint8_t *)calloc(1, BAMBUDECK_THUMB_BUF_SIZE);
+        if (bambudeck_thumb_pixels)
+        {
+            bambudeck_thumb_dsc.data = bambudeck_thumb_pixels;
+        }
+    }
+    return (bambudeck_thumb_pixels != NULL);
+}
 
 struct BambuStreamingPngCtx
 {
@@ -168,8 +182,11 @@ static void bambudeck_png_render_scanline(BambuStreamingPngCtx *ctx)
             }
             lv_color_t c = lv_color_make(r, g, b);
             uint32_t dst_idx = (dy * BAMBUDECK_THUMB_W + dx) * BAMBUDECK_THUMB_PX_BYTES;
-            bambudeck_thumb_pixels[dst_idx] = (uint8_t)(c.full & 0xFF);
-            bambudeck_thumb_pixels[dst_idx + 1] = (uint8_t)((c.full >> 8) & 0xFF);
+            if (bambudeck_thumb_pixels)
+            {
+                bambudeck_thumb_pixels[dst_idx] = (uint8_t)(c.full & 0xFF);
+                bambudeck_thumb_pixels[dst_idx + 1] = (uint8_t)((c.full >> 8) & 0xFF);
+            }
         }
     }
 
@@ -291,8 +308,8 @@ inline void bambudeck_thumbnail_init()
     bambudeck_thumb_dsc.header.w = BAMBUDECK_THUMB_W;
     bambudeck_thumb_dsc.header.h = BAMBUDECK_THUMB_H;
     bambudeck_thumb_dsc.header.cf = LV_IMG_CF_TRUE_COLOR;
-    bambudeck_thumb_dsc.data_size = sizeof(bambudeck_thumb_pixels);
-    bambudeck_thumb_dsc.data = bambudeck_thumb_pixels;
+    bambudeck_thumb_dsc.data_size = BAMBUDECK_THUMB_BUF_SIZE;
+    bambudeck_thumb_dsc.data = NULL;
 }
 
 inline void bambudeck_thumbnail_clear()
@@ -300,6 +317,12 @@ inline void bambudeck_thumbnail_clear()
     bambudeck_has_thumb = false;
     bambudeck_last_thumb_key[0] = '\0';
     bambudeck_thumb_retry_count = 0;
+    if (bambudeck_thumb_pixels != NULL)
+    {
+        free(bambudeck_thumb_pixels);
+        bambudeck_thumb_pixels = NULL;
+        bambudeck_thumb_dsc.data = NULL;
+    }
 }
 
 // Called when the theme changes so the thumbnail is re-decoded against the new card colour
@@ -430,7 +453,14 @@ inline void bambudeck_thumbnail_check_download()
             const uint8_t png_sig[8] = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
             if (bambudeck_stream_read_exact(stream, sig, 8) && memcmp(sig, png_sig, 8) == 0)
             {
-                memset(bambudeck_thumb_pixels, 0, sizeof(bambudeck_thumb_pixels));
+                if (!bambudeck_thumb_alloc())
+                {
+                    ConsoleError.println(F("[BambuDeck][THUMB] OOM allocating thumb buffer"));
+                    http.end();
+                    free(ctx);
+                    return;
+                }
+                memset(bambudeck_thumb_pixels, 0, BAMBUDECK_THUMB_BUF_SIZE);
 
                 while (!ctx->done && !ctx->error)
                 {

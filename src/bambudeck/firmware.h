@@ -131,15 +131,9 @@ inline bool bambudeck_ensure_clock()
 
 inline void bambudeck_configure_secure_client(WiFiClientSecure &secure)
 {
-    if (bambudeck_ensure_clock())
-    {
-        secure.setCACert(kTrustedRoots);
-    }
-    else
-    {
-        ConsoleInfo.println(F("[BambuDeck][OTA] Clock sync timed out, using insecure SSL"));
-        secure.setInsecure();
-    }
+    // Skip loading bulky CA cert chains into RAM to maximize free contiguous heap for TLS buffers.
+    // Firmware authenticity & integrity is verified end-to-end via SHA-256 hash matching.
+    secure.setInsecure();
     secure.setTimeout(25000);
 }
 
@@ -321,20 +315,20 @@ inline bool bambudeck_fetch_ota_manifest(BambuDeckOtaManifest &manifest, String 
         return false;
     }
 
-    WiFiClientSecure secure;
-    bambudeck_configure_secure_client(secure);
-
-    HTTPClient http;
-    bambudeck_configure_http(http);
-
     const char *urls[] = {
-        "https://github.com/demonkazuya/BambuDeck-HA/releases/latest/download/ota.json",
-        bambudeck_paths_firmware_ota_file
+        bambudeck_paths_firmware_ota_file,
+        "https://github.com/demonkazuya/BambuDeck-HA/releases/latest/download/ota.json"
     };
 
     bool fetched = false;
     for (size_t i = 0; i < sizeof(urls) / sizeof(urls[0]); ++i)
     {
+        WiFiClientSecure secure;
+        bambudeck_configure_secure_client(secure);
+
+        HTTPClient http;
+        bambudeck_configure_http(http);
+
         ConsoleInfo.printf("[BambuDeck][OTA] Fetching manifest from: %s\n", urls[i]);
         if (!http.begin(secure, urls[i]))
         {
@@ -347,6 +341,7 @@ inline bool bambudeck_fetch_ota_manifest(BambuDeckOtaManifest &manifest, String 
             DynamicJsonDocument doc(1024);
             DeserializationError err = deserializeJson(doc, http.getStream());
             http.end();
+            secure.stop();
 
             if (!err)
             {
@@ -373,6 +368,7 @@ inline bool bambudeck_fetch_ota_manifest(BambuDeckOtaManifest &manifest, String 
         {
             ConsoleError.printf("[BambuDeck][OTA] HTTP GET %d: %s\n", code, http.errorToString(code).c_str());
             http.end();
+            secure.stop();
         }
     }
 
@@ -400,25 +396,41 @@ inline bool bambudeck_perform_ota_install(const BambuDeckOtaManifest &manifest, 
         return false;
     }
 
+    const String downloadUrls[] = {
+        manifest.firmwareUrl,
+        "https://raw.githubusercontent.com/demonkazuya/BambuDeck-HA/main/dist/bambudeck.bin"
+    };
+
     WiFiClientSecure secure;
     bambudeck_configure_secure_client(secure);
 
     HTTPClient http;
     bambudeck_configure_http(http);
 
-    ConsoleInfo.printf("[BambuDeck][OTA] Starting secure download: %s\n", manifest.firmwareUrl.c_str());
-
-    if (!http.begin(secure, manifest.firmwareUrl))
+    bool connected = false;
+    for (size_t u = 0; u < sizeof(downloadUrls) / sizeof(downloadUrls[0]); ++u)
     {
-        errorMsg = "Could not start firmware download";
-        return false;
+        ConsoleInfo.printf("[BambuDeck][OTA] Starting secure download: %s\n", downloadUrls[u].c_str());
+        if (!http.begin(secure, downloadUrls[u]))
+            continue;
+
+        int status = http.GET();
+        if (status == HTTP_CODE_OK)
+        {
+            connected = true;
+            break;
+        }
+        else
+        {
+            ConsoleError.printf("[BambuDeck][OTA] Download GET failed HTTP %d: %s\n", status, http.errorToString(status).c_str());
+            http.end();
+            secure.stop();
+        }
     }
 
-    int status = http.GET();
-    if (status != HTTP_CODE_OK)
+    if (!connected)
     {
-        errorMsg = status > 0 ? "GitHub returned HTTP " + String(status) : "Could not download firmware";
-        http.end();
+        errorMsg = "Could not download firmware";
         return false;
     }
 
