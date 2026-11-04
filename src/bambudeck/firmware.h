@@ -242,30 +242,66 @@ inline bool bambudeck_fetch_ota_manifest(String &outJson)
     return false;
 }
 
-// Direct stream HTTP OTA flash into flash partition (No SD card required!)
+// Direct stream HTTP OTA flash into flash partition with real-time progress bar & watchdog safety
 inline bool bambudeck_perform_direct_http_ota(const char *url, const char *expectedMd5 = NULL)
 {
     if (WiFi.status() != WL_CONNECTED || !url || strlen(url) == 0)
         return false;
 
-    WiFiClientSecure client;
-    client.setInsecure();
-    client.setTimeout(30000); // 30 seconds
-
+    String currentUrl = String(url);
+    int redirects = 0;
     HTTPClient http;
-    http.setUserAgent("Mozilla/5.0 (ESP32; BambuDeck-OTA)");
-    http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
-    http.setRedirectLimit(5);
-    http.setTimeout(30000);
+    WiFiClientSecure *client = nullptr;
+    int httpCode = 0;
 
-    if (!http.begin(client, url))
-        return false;
+    // Follow up to 5 HTTP 301/302/303/307 redirects with a fresh SSL connection for each host
+    while (redirects < 6)
+    {
+        if (client != nullptr)
+        {
+            delete client;
+            client = nullptr;
+        }
+        client = new WiFiClientSecure();
+        client->setInsecure();
+        client->setTimeout(15000);
 
-    int httpCode = http.GET();
+        http.setUserAgent("Mozilla/5.0 (ESP32; BambuDeck-OTA)");
+        http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+        http.setTimeout(15000);
+
+        if (!http.begin(*client, currentUrl))
+        {
+            ConsoleError.printf("[BambuDeck][OTA] http.begin failed for: %s\n", currentUrl.c_str());
+            http.end();
+            delete client;
+            return false;
+        }
+
+        httpCode = http.GET();
+        if (httpCode == HTTP_CODE_FOUND || httpCode == HTTP_CODE_MOVED_PERMANENTLY ||
+            httpCode == HTTP_CODE_TEMPORARY_REDIRECT || httpCode == 307 || httpCode == 308)
+        {
+            String nextUrl = http.getLocation();
+            ConsoleInfo.printf("[BambuDeck][OTA] Redirect (%d) to: %s\n", httpCode, nextUrl.c_str());
+            http.end();
+            if (nextUrl.length() == 0)
+            {
+                delete client;
+                return false;
+            }
+            currentUrl = nextUrl;
+            redirects++;
+            continue;
+        }
+        break;
+    }
+
     if (httpCode != HTTP_CODE_OK)
     {
         ConsoleError.printf("[BambuDeck][OTA] Stream firmware failed HTTP %d: %s\n", httpCode, http.errorToString(httpCode).c_str());
         http.end();
+        if (client) delete client;
         return false;
     }
 
@@ -274,21 +310,21 @@ inline bool bambudeck_perform_direct_http_ota(const char *url, const char *expec
     {
         ConsoleError.println(F("[BambuDeck][OTA] Invalid content length for firmware"));
         http.end();
+        if (client) delete client;
         return false;
     }
 
-    if (!bambudeck_ota_modal)
-    {
-        bambudeck_ota_progress_show(LV_SYMBOL_DOWNLOAD " Installing Firmware...");
-    }
+    ConsoleInfo.printf("[BambuDeck][OTA] Downloading firmware (%d bytes)...\n", contentLength);
 
-    bambudeck_ota_last_reported_pct = -1;
-    Update.onProgress(bambudeck_firmware_onProgress);
+    bambudeck_ota_progress_show(LV_SYMBOL_DOWNLOAD " Downloading Update...");
+    lv_timer_handler();
+    lv_task_handler();
 
     if (!Update.begin(contentLength, U_FLASH))
     {
         ConsoleError.printf("[BambuDeck][OTA] Update.begin failed: %s\n", Update.errorString());
         http.end();
+        if (client) delete client;
         return false;
     }
 
@@ -298,12 +334,51 @@ inline bool bambudeck_perform_direct_http_ota(const char *url, const char *expec
     }
 
     WiFiClient *stream = http.getStreamPtr();
-    size_t written = Update.writeStream(*stream);
-    http.end();
+    uint8_t buff[1024];
+    size_t totalRead = 0;
+    int lastPct = -1;
+    unsigned long lastDataTime = millis();
 
-    if (written != (size_t)contentLength)
+    while (http.connected() && (totalRead < (size_t)contentLength))
     {
-        ConsoleError.printf("[BambuDeck][OTA] Written only %d/%d bytes\n", (int)written, contentLength);
+        size_t avail = stream->available();
+        if (avail > 0)
+        {
+            int toRead = (avail > sizeof(buff)) ? sizeof(buff) : avail;
+            int bytesRead = stream->readBytes((char *)buff, toRead);
+            if (bytesRead > 0)
+            {
+                Update.write(buff, bytesRead);
+                totalRead += bytesRead;
+                lastDataTime = millis();
+
+                int pct = (int)((totalRead * 100) / contentLength);
+                if (pct != lastPct)
+                {
+                    lastPct = pct;
+                    bambudeck_ota_progress_update(totalRead, contentLength);
+                }
+            }
+        }
+        else
+        {
+            delay(5);
+            if (millis() - lastDataTime > 20000)
+            {
+                ConsoleError.println(F("[BambuDeck][OTA] Download timeout (no data for 20s)"));
+                break;
+            }
+        }
+        delay(1); // yields to FreeRTOS and feeds watchdog!
+    }
+
+    http.end();
+    if (client) delete client;
+
+    if (totalRead != (size_t)contentLength)
+    {
+        ConsoleError.printf("[BambuDeck][OTA] Download incomplete: %d/%d bytes\n", (int)totalRead, contentLength);
+        Update.abort();
         return false;
     }
 

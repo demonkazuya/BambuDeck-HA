@@ -91,7 +91,7 @@ inline void bambudeck_resetTouchConfig()
 {
     ConsoleInfo.println(F("[BambuDeck][Touch] Resetting touch calibration"));
     bambudeck_filesystem_deleteFile(bambudeck_paths_touch);
-    delay(500);
+    delay(300);
     ESP.restart();
 }
 
@@ -118,70 +118,92 @@ inline void bambudeck_touch_setup()
         lv_obj_set_style_text_color(introScreenCaption, lv_color_hex(0x00ae42), LV_PART_MAIN | LV_STATE_DEFAULT);
         lv_timer_handler();
 
+        // Wait for release while yielding to watchdog
         while (bambudeck_touchScreen.touched())
-            ;
+        {
+            delay(10);
+            lv_timer_handler();
+        }
 
-        // Draw crosshair at Top-Left (20, 20)
-        tft.drawFastHLine(10, 20, 21, TFT_WHITE);
-        tft.drawFastVLine(20, 10, 21, TFT_WHITE);
+        // Draw crosshair at Top-Left (25, 25)
+        tft.drawFastHLine(15, 25, 21, TFT_WHITE);
+        tft.drawFastVLine(25, 15, 21, TFT_WHITE);
 
+        // Wait for press while yielding to watchdog
         while (!bambudeck_touchScreen.touched())
-            ;
+        {
+            delay(10);
+            lv_timer_handler();
+        }
 
-        delay(50);
+        delay(60);
         p = bambudeck_touchScreen.getPoint();
         x1 = p.x;
         y1 = p.y;
 
         // Erase crosshair
-        tft.drawFastHLine(10, 20, 21, TFT_BLACK);
-        tft.drawFastVLine(20, 10, 21, TFT_BLACK);
-        delay(400);
+        tft.drawFastHLine(15, 25, 21, TFT_BLACK);
+        tft.drawFastVLine(25, 15, 21, TFT_BLACK);
+        delay(300);
 
         lv_label_set_text(introScreenCaption, "Touch the " LV_SYMBOL_PLUS " crosshair with stylus (2/2)");
         lv_obj_set_style_text_color(introScreenCaption, lv_color_hex(0x00ae42), LV_PART_MAIN | LV_STATE_DEFAULT);
         lv_timer_handler();
 
+        // Wait for release
         while (bambudeck_touchScreen.touched())
-            ;
+        {
+            delay(10);
+            lv_timer_handler();
+        }
 
-        // Draw crosshair at Bottom-Right (300, 220)
-        tft.drawFastHLine(290, 220, 21, TFT_WHITE);
-        tft.drawFastVLine(300, 210, 21, TFT_WHITE);
+        // Draw crosshair at Bottom-Right (295, 215)
+        tft.drawFastHLine(285, 215, 21, TFT_WHITE);
+        tft.drawFastVLine(295, 205, 21, TFT_WHITE);
 
+        // Wait for press
         while (!bambudeck_touchScreen.touched())
-            ;
+        {
+            delay(10);
+            lv_timer_handler();
+        }
 
-        delay(50);
+        delay(60);
         p = bambudeck_touchScreen.getPoint();
         x2 = p.x;
         y2 = p.y;
 
         // Erase crosshair
-        tft.drawFastHLine(290, 220, 21, TFT_WHITE ? TFT_BLACK : 0);
-        tft.drawFastVLine(300, 210, 21, TFT_BLACK);
+        tft.drawFastHLine(285, 215, 21, TFT_BLACK);
+        tft.drawFastVLine(295, 205, 21, TFT_BLACK);
 
-        if (abs(x2 - x1) > 400 && abs(y2 - y1) > 400)
+        if (abs(x2 - x1) > 300 && abs(y2 - y1) > 300)
         {
             break;
         }
-        delay(400);
+        delay(300);
     }
 
-    int16_t xDist = 320 - 40;
-    int16_t yDist = 240 - 40;
+    // Coordinates of calibration targets: P1(25, 25), P2(295, 215)
+    int16_t xDist = 295 - 25; // 270
+    int16_t yDist = 215 - 25; // 190
 
     bambudeck_touchConfig.xCalM = (float)xDist / (float)(x2 - x1);
-    bambudeck_touchConfig.xCalC = 20.0f - ((float)x1 * bambudeck_touchConfig.xCalM);
+    bambudeck_touchConfig.xCalC = 25.0f - ((float)x1 * bambudeck_touchConfig.xCalM);
 
     bambudeck_touchConfig.yCalM = (float)yDist / (float)(y2 - y1);
-    bambudeck_touchConfig.yCalC = 20.0f - ((float)y1 * bambudeck_touchConfig.yCalM);
+    bambudeck_touchConfig.yCalC = 25.0f - ((float)y1 * bambudeck_touchConfig.yCalM);
 
     bambudeck_saveTouchConfig(bambudeck_touchConfig);
-    ConsoleInfo.println(F("[BambuDeck][TOUCH] Calibration completed and saved"));
+    ConsoleInfo.printf("[BambuDeck][TOUCH] Calibrated: xM=%.4f xC=%.2f yM=%.4f yC=%.2f\n",
+                       bambudeck_touchConfig.xCalM, bambudeck_touchConfig.xCalC,
+                       bambudeck_touchConfig.yCalM, bambudeck_touchConfig.yCalC);
 
     while (bambudeck_touchScreen.touched())
-        ;
+    {
+        delay(10);
+        lv_timer_handler();
+    }
 }
 
 #endif

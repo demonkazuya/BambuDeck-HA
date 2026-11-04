@@ -156,11 +156,12 @@ def post_build_action(source, target, env):
     subprocess.run(esptool_cmd, check=True)
     shutil.copy(factory_bin, "dist/bambudeck.factory.bin")
 
-    # Generate ota.json pointing to GitHub Release asset
+    # Generate ota.json pointing to raw GitHub binary (direct download without 302 redirect)
     md5, size = calculate_md5_and_size(fw_bin_target)
     ota_data = {
         "version": version_value,
-        "url": f"https://github.com/demonkazuya/BambuDeck-HA/releases/download/v{version_value}/bambudeck.bin",
+        "url": "https://raw.githubusercontent.com/demonkazuya/BambuDeck-HA/main/dist/bambudeck.bin",
+        "release_url": f"https://github.com/demonkazuya/BambuDeck-HA/releases/download/v{version_value}/bambudeck.bin",
         "md5": md5,
         "size": size
     }

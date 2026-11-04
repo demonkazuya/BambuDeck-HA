@@ -1,6 +1,7 @@
 {
-  "version": "0.1.3",
-  "url": "https://github.com/demonkazuya/BambuDeck-HA/releases/download/v0.1.3/bambudeck.bin",
-  "md5": "6310f7108500f980de1fac972345345f",
-  "size": 1728016
+  "version": "0.1.4",
+  "url": "https://raw.githubusercontent.com/demonkazuya/BambuDeck-HA/main/dist/bambudeck.bin",
+  "release_url": "https://github.com/demonkazuya/BambuDeck-HA/releases/download/v0.1.4/bambudeck.bin",
+  "md5": "3c12ddfdc6621b574ba8de2346258303",
+  "size": 1728128
 }
