@@ -148,7 +148,7 @@ inline void bambudeck_screen_touchRead(lv_indev_drv_t *indev_driver, lv_indev_da
         {
             bambudeck_screen_wakeUp();
             while (bambudeck_touchScreen.touched())
-                ;
+                delay(10);
             return;
         }
 
