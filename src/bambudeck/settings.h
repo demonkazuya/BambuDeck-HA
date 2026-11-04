@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include <Preferences.h>
 #include "filesystem.h"
 #include "paths.h"
 #include "types.h"
@@ -23,6 +24,19 @@ inline void bambudeck_settings_save(bool onlyRoot = false)
     doc["chamberFan"] = bambuDeckConfig.chamberFanEnabled;
 
     bambudeck_filesystem_writeJson(bambudeck_paths_settings, doc);
+
+    Preferences prefs;
+    if (prefs.begin("bambudeck_set", false))
+    {
+        prefs.putInt("backlight", bambuDeckConfig.backlightLevel);
+        prefs.putInt("tftOff", bambuDeckConfig.tftOffValue);
+        prefs.putBool("tftInvert", bambuDeckConfig.tftInvert);
+        prefs.putBool("ota", bambuDeckConfig.otaEnabled);
+        prefs.putBool("wop", bambuDeckConfig.wakeOnPrint);
+        prefs.putBool("lightMode", bambuDeckConfig.lightMode);
+        prefs.putBool("chamberTemp", bambuDeckConfig.chamberSensorEnabled);
+        prefs.end();
+    }
 }
 
 inline void bambudeck_settings_loadSettings()
@@ -39,6 +53,20 @@ inline void bambudeck_settings_loadSettings()
         bambuDeckConfig.chamberSensorEnabled = true;
         bambuDeckConfig.auxFanEnabled = false;
         bambuDeckConfig.chamberFanEnabled = false;
+
+        Preferences prefs;
+        if (prefs.begin("bambudeck_set", true))
+        {
+            bambuDeckConfig.backlightLevel = prefs.getInt("backlight", 128);
+            bambuDeckConfig.tftOffValue = prefs.getInt("tftOff", 15);
+            bambuDeckConfig.tftInvert = prefs.getBool("tftInvert", false);
+            bambuDeckConfig.otaEnabled = prefs.getBool("ota", true);
+            bambuDeckConfig.wakeOnPrint = prefs.getBool("wop", true);
+            bambuDeckConfig.lightMode = prefs.getBool("lightMode", false);
+            bambuDeckConfig.chamberSensorEnabled = prefs.getBool("chamberTemp", true);
+            prefs.end();
+        }
+
         bambudeck_settings_save(true);
     }
 
@@ -54,6 +82,20 @@ inline void bambudeck_settings_loadSettings()
     bambuDeckConfig.chamberSensorEnabled = settings.containsKey("chamberTemp") ? settings["chamberTemp"].as<bool>() : false;
     bambuDeckConfig.auxFanEnabled = settings.containsKey("auxFan") ? settings["auxFan"].as<bool>() : false;
     bambuDeckConfig.chamberFanEnabled = settings.containsKey("chamberFan") ? settings["chamberFan"].as<bool>() : false;
+
+    // Sync to NVS
+    Preferences prefs;
+    if (prefs.begin("bambudeck_set", false))
+    {
+        prefs.putInt("backlight", bambuDeckConfig.backlightLevel);
+        prefs.putInt("tftOff", bambuDeckConfig.tftOffValue);
+        prefs.putBool("tftInvert", bambuDeckConfig.tftInvert);
+        prefs.putBool("ota", bambuDeckConfig.otaEnabled);
+        prefs.putBool("wop", bambuDeckConfig.wakeOnPrint);
+        prefs.putBool("lightMode", bambuDeckConfig.lightMode);
+        prefs.putBool("chamberTemp", bambuDeckConfig.chamberSensorEnabled);
+        prefs.end();
+    }
 
     bool isTFTFlipped = bambudeck_screen_getTFTFlip();
     tft.setRotation(isTFTFlipped ? 3 : 1);
