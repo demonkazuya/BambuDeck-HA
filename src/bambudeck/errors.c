@@ -2,7 +2,7 @@
 #include <pgmspace.h>
 #include <Arduino.h>
 
-bool bambudeck_errors_isKeyPresent(const char *key, const char *keys[], int length)
+bool bambudeck_errors_isKeyPresent(const char *key, const char * const keys[], int length)
 {
     for (int i = 0; i < length; i++)
     {
@@ -25,7 +25,7 @@ bool bambudeck_errors_deviceErrorHasRetry(const char *key)
     return bambudeck_errors_isKeyPresent(key, message_containing_retry, message_containing_retry_total);
 }
 
-const char *bambudeck_errors_getValueByKey(const char *key, const char *keys[], const char *values[], int numEntries)
+const char *bambudeck_errors_getValueByKey(const char *key, const char * const keys[], const char * const values[], int numEntries)
 {
     for (int i = 0; i < numEntries; i++)
     {
