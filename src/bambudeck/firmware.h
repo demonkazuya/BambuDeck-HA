@@ -159,7 +159,6 @@ inline String bambudeck_hex_digest(const uint8_t digest[32])
 }
 
 static lv_obj_t *bambudeck_ota_modal = NULL;
-static lv_obj_t *bambudeck_boot_ota_container = NULL;
 static lv_obj_t *bambudeck_ota_bar = NULL;
 static lv_obj_t *bambudeck_ota_title = NULL;
 static lv_obj_t *bambudeck_ota_percent = NULL;
@@ -171,11 +170,6 @@ inline void bambudeck_ota_progress_close(void)
     {
         lv_obj_del(bambudeck_ota_modal);
         bambudeck_ota_modal = NULL;
-    }
-    if (bambudeck_boot_ota_container != NULL && lv_obj_is_valid(bambudeck_boot_ota_container))
-    {
-        lv_obj_del(bambudeck_boot_ota_container);
-        bambudeck_boot_ota_container = NULL;
     }
     bambudeck_ota_bar = NULL;
     bambudeck_ota_title = NULL;
@@ -224,19 +218,26 @@ inline void bambudeck_ota_progress_show(const char *title)
     lv_obj_set_style_text_font(bambudeck_ota_title, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_label_set_text(bambudeck_ota_title, title ? title : "Updating Firmware...");
 
-    bambudeck_ota_bar = lv_bar_create(card);
-    lv_obj_set_size(bambudeck_ota_bar, 220, 12);
-    lv_bar_set_range(bambudeck_ota_bar, 0, 100);
-    lv_bar_set_value(bambudeck_ota_bar, 0, LV_ANIM_OFF);
-    lv_obj_set_style_radius(bambudeck_ota_bar, 6, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(bambudeck_ota_bar, BAMBU_COLOR_BG_ELEVATED(), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_opa(bambudeck_ota_bar, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_all(bambudeck_ota_bar, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    // Outer track for progress bar
+    lv_obj_t *bar_track = lv_obj_create(card);
+    lv_obj_set_size(bar_track, 220, 10);
+    lv_obj_clear_flag(bar_track, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_radius(bar_track, 5, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(bar_track, BAMBU_COLOR_BG_ELEVATED(), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(bar_track, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_width(bar_track, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_all(bar_track, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    lv_obj_set_style_radius(bambudeck_ota_bar, 6, LV_PART_INDICATOR | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(bambudeck_ota_bar, BAMBU_COLOR_GREEN(), LV_PART_INDICATOR | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_opa(bambudeck_ota_bar, 255, LV_PART_INDICATOR | LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_all(bambudeck_ota_bar, 0, LV_PART_INDICATOR | LV_STATE_DEFAULT);
+    // Inner green fill indicator
+    bambudeck_ota_bar = lv_obj_create(bar_track);
+    lv_obj_set_size(bambudeck_ota_bar, 0, 10);
+    lv_obj_set_align(bambudeck_ota_bar, LV_ALIGN_LEFT_MID);
+    lv_obj_clear_flag(bambudeck_ota_bar, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_radius(bambudeck_ota_bar, 5, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(bambudeck_ota_bar, BAMBU_COLOR_GREEN(), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(bambudeck_ota_bar, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_width(bambudeck_ota_bar, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_all(bambudeck_ota_bar, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     bambudeck_ota_percent = lv_label_create(card);
     lv_obj_set_width(bambudeck_ota_percent, lv_pct(100));
@@ -250,67 +251,7 @@ inline void bambudeck_ota_progress_show(const char *title)
     lv_task_handler();
 }
 
-inline void bambudeck_ota_boot_progress_show(const char *version)
-{
-    bambudeck_ota_progress_close();
-
-    bambudeck_ota_last_reported_pct = -1;
-
-    if (introScreenCaption != NULL && lv_obj_is_valid(introScreenCaption))
-    {
-        if (version != NULL && strlen(version) > 0)
-        {
-            lv_label_set_text_fmt(introScreenCaption, LV_SYMBOL_DOWNLOAD " Updating to v%s...", version);
-        }
-        else
-        {
-            lv_label_set_text(introScreenCaption, LV_SYMBOL_DOWNLOAD " Updating Firmware...");
-        }
-        lv_obj_set_style_text_color(introScreenCaption, BAMBU_COLOR_GREEN(), LV_PART_MAIN | LV_STATE_DEFAULT);
-    }
-
-    if (introScreen != NULL && lv_obj_is_valid(introScreen))
-    {
-        bambudeck_boot_ota_container = lv_obj_create(introScreen);
-        lv_obj_set_width(bambudeck_boot_ota_container, 240);
-        lv_obj_set_height(bambudeck_boot_ota_container, LV_SIZE_CONTENT);
-        lv_obj_set_flex_flow(bambudeck_boot_ota_container, LV_FLEX_FLOW_COLUMN);
-        lv_obj_set_flex_align(bambudeck_boot_ota_container, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-        lv_obj_clear_flag(bambudeck_boot_ota_container, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_style_bg_opa(bambudeck_boot_ota_container, 0, LV_PART_MAIN);
-        lv_obj_set_style_border_width(bambudeck_boot_ota_container, 0, LV_PART_MAIN);
-        lv_obj_set_style_pad_all(bambudeck_boot_ota_container, 0, LV_PART_MAIN);
-        lv_obj_set_style_pad_top(bambudeck_boot_ota_container, 14, LV_PART_MAIN);
-        lv_obj_set_style_pad_row(bambudeck_boot_ota_container, 8, LV_PART_MAIN);
-
-        bambudeck_ota_bar = lv_bar_create(bambudeck_boot_ota_container);
-        lv_obj_set_size(bambudeck_ota_bar, 220, 12);
-        lv_bar_set_range(bambudeck_ota_bar, 0, 100);
-        lv_bar_set_value(bambudeck_ota_bar, 0, LV_ANIM_OFF);
-        lv_obj_set_style_radius(bambudeck_ota_bar, 6, LV_PART_MAIN | LV_STATE_DEFAULT);
-        lv_obj_set_style_bg_color(bambudeck_ota_bar, BAMBU_COLOR_BG_ELEVATED(), LV_PART_MAIN | LV_STATE_DEFAULT);
-        lv_obj_set_style_bg_opa(bambudeck_ota_bar, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-        lv_obj_set_style_pad_all(bambudeck_ota_bar, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
-
-        lv_obj_set_style_radius(bambudeck_ota_bar, 6, LV_PART_INDICATOR | LV_STATE_DEFAULT);
-        lv_obj_set_style_bg_color(bambudeck_ota_bar, BAMBU_COLOR_GREEN(), LV_PART_INDICATOR | LV_STATE_DEFAULT);
-        lv_obj_set_style_bg_opa(bambudeck_ota_bar, 255, LV_PART_INDICATOR | LV_STATE_DEFAULT);
-        lv_obj_set_style_pad_all(bambudeck_ota_bar, 0, LV_PART_INDICATOR | LV_STATE_DEFAULT);
-
-        bambudeck_ota_percent = lv_label_create(bambudeck_boot_ota_container);
-        lv_obj_set_width(bambudeck_ota_percent, lv_pct(100));
-        lv_obj_set_style_text_align(bambudeck_ota_percent, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        lv_obj_set_style_text_color(bambudeck_ota_percent, BAMBU_COLOR_TEXT_SECONDARY(), LV_PART_MAIN);
-        lv_obj_set_style_text_font(bambudeck_ota_percent, &lv_font_montserrat_14, LV_PART_MAIN);
-        lv_label_set_text(bambudeck_ota_percent, "0% (0 KB)");
-    }
-
-    lv_refr_now(NULL);
-    lv_timer_handler();
-    lv_task_handler();
-}
-
-inline void bambudeck_ota_progress_update(size_t currSize, size_t totalSize)
+inline void bambudeck_ota_progress_update(size_t currSize, size_t totalSize, bool isBoot = false)
 {
     if (totalSize == 0)
         return;
@@ -324,36 +265,53 @@ inline void bambudeck_ota_progress_update(size_t currSize, size_t totalSize)
     }
     bambudeck_ota_last_reported_pct = progress;
 
-    if (bambudeck_ota_bar != NULL && lv_obj_is_valid(bambudeck_ota_bar))
+    if (isBoot)
     {
-        lv_bar_set_value(bambudeck_ota_bar, progress, LV_ANIM_OFF);
+        if (introScreenCaption != NULL && lv_obj_is_valid(introScreenCaption))
+        {
+            lv_label_set_text_fmt(introScreenCaption, LV_SYMBOL_CHARGE " Updating %d%%", progress);
+        }
     }
-    if (bambudeck_ota_percent != NULL && lv_obj_is_valid(bambudeck_ota_percent))
+    else
     {
-        lv_label_set_text_fmt(bambudeck_ota_percent, "%d%% (%d / %d KB)", progress, (int)(currSize / 1024), (int)(totalSize / 1024));
+        if (bambudeck_ota_bar != NULL && lv_obj_is_valid(bambudeck_ota_bar))
+        {
+            int fillWidth = (progress * 220) / 100;
+            lv_obj_set_width(bambudeck_ota_bar, fillWidth);
+        }
+        if (bambudeck_ota_percent != NULL && lv_obj_is_valid(bambudeck_ota_percent))
+        {
+            lv_label_set_text_fmt(bambudeck_ota_percent, "%d%% (%d / %d KB)", progress, (int)(currSize / 1024), (int)(totalSize / 1024));
+        }
     }
     lv_refr_now(NULL);
     lv_timer_handler();
     lv_task_handler();
 }
 
-inline void bambudeck_ota_progress_finish(void)
+inline void bambudeck_ota_progress_finish(bool isBoot = false)
 {
-    if (bambudeck_ota_title != NULL && lv_obj_is_valid(bambudeck_ota_title))
+    if (isBoot)
     {
-        lv_label_set_text(bambudeck_ota_title, LV_SYMBOL_OK " Update Finished! Rebooting...");
+        if (introScreenCaption != NULL && lv_obj_is_valid(introScreenCaption))
+        {
+            lv_label_set_text(introScreenCaption, LV_SYMBOL_OK " Update Finished! Rebooting...");
+        }
     }
-    if (bambudeck_ota_bar != NULL && lv_obj_is_valid(bambudeck_ota_bar))
+    else
     {
-        lv_bar_set_value(bambudeck_ota_bar, 100, LV_ANIM_OFF);
-    }
-    if (bambudeck_ota_percent != NULL && lv_obj_is_valid(bambudeck_ota_percent))
-    {
-        lv_label_set_text(bambudeck_ota_percent, "100% Done");
-    }
-    if (introScreenCaption != NULL && lv_obj_is_valid(introScreenCaption))
-    {
-        lv_label_set_text(introScreenCaption, LV_SYMBOL_OK " Update Finished! Rebooting...");
+        if (bambudeck_ota_title != NULL && lv_obj_is_valid(bambudeck_ota_title))
+        {
+            lv_label_set_text(bambudeck_ota_title, LV_SYMBOL_OK " Update Finished! Rebooting...");
+        }
+        if (bambudeck_ota_bar != NULL && lv_obj_is_valid(bambudeck_ota_bar))
+        {
+            lv_obj_set_width(bambudeck_ota_bar, 220);
+        }
+        if (bambudeck_ota_percent != NULL && lv_obj_is_valid(bambudeck_ota_percent))
+        {
+            lv_label_set_text(bambudeck_ota_percent, "100% Done");
+        }
     }
     lv_refr_now(NULL);
     lv_timer_handler();
@@ -533,11 +491,7 @@ inline bool bambudeck_perform_ota_install(const BambuDeckOtaManifest &manifest, 
         Update.setMD5(manifest.md5.c_str());
     }
 
-    if (isBoot)
-    {
-        bambudeck_ota_boot_progress_show(manifest.version.c_str());
-    }
-    else
+    if (!isBoot)
     {
         bambudeck_ota_progress_show(LV_SYMBOL_DOWNLOAD " Downloading & Flashing...");
     }
@@ -596,7 +550,7 @@ inline bool bambudeck_perform_ota_install(const BambuDeckOtaManifest &manifest, 
         if (completed - lastProgress >= 16384 || remaining == 0)
         {
             lastProgress = completed;
-            bambudeck_ota_progress_update(completed, manifest.sizeBytes);
+            bambudeck_ota_progress_update(completed, manifest.sizeBytes, isBoot);
         }
 
         delay(1); // yields to FreeRTOS and feeds watchdog!
@@ -639,7 +593,7 @@ inline bool bambudeck_perform_ota_install(const BambuDeckOtaManifest &manifest, 
     }
 
     ConsoleInfo.println(F("[BambuDeck][OTA] Direct HTTP OTA flash verified and successful!"));
-    bambudeck_ota_progress_finish();
+    bambudeck_ota_progress_finish(isBoot);
     return true;
 }
 
