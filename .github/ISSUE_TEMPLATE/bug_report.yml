@@ -1,0 +1,126 @@
+name: "🐛 Bug Report"
+description: Report a bug or issue with BambuDeck-HA
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting an issue! Please fill out the form below as completely as possible to help us reproduce and fix it quickly.
+
+  - type: dropdown
+    id: device_model
+    attributes:
+      label: CYD / ESP32 Hardware Model
+      description: Which display board are you using?
+      options:
+        - "ESP32-2432S028R (2.8\" Resistive Touch - Standard CYD)"
+        - "ESP32-2432S028C (2.8\" Capacitive Touch)"
+        - "ESP32-3248S035 (3.5\" Display)"
+        - "ESP32-2432S024 (2.4\" Display)"
+        - "Other / Custom Hardware"
+    validations:
+      required: true
+
+  - type: input
+    id: firmware_version
+    attributes:
+      label: Firmware Version
+      description: Version installed on the device (e.g., v0.2.2 or commit SHA).
+      placeholder: "e.g., v0.2.2"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: printer_model
+    attributes:
+      label: Bambu Lab Printer Model
+      description: Which printer is connected to Home Assistant?
+      options:
+        - "P1S"
+        - "P1P"
+        - "X1-Carbon (X1C)"
+        - "A1"
+        - "A1 Mini"
+        - "Multiple Printers"
+        - "None / Setup stage"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: ha_integration
+    attributes:
+      label: Home Assistant Bambu Integration
+      description: Which Home Assistant integration are you using for your Bambu printer?
+      options:
+        - "ha-bambulab (HACS Custom Component by WolfwithSword / Adrian)"
+        - "Official Home Assistant Bambu Lab Integration (Core)"
+        - "MQTT direct connection"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description of the Issue
+      description: A clear and concise description of what the problem is.
+      placeholder: "Explain what is happening..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction_steps
+    attributes:
+      label: Steps to Reproduce
+      description: Step-by-step instructions on how to replicate the issue.
+      placeholder: |
+        1. Power on the device
+        2. Navigate to '...'
+        3. Tap on '...'
+        4. Observe error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_vs_actual
+    attributes:
+      label: Expected vs Actual Behavior
+      description: What did you expect to happen, and what happened instead?
+      placeholder: "Expected: ... \nActual: ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: serial_logs
+    attributes:
+      label: Serial Console Logs (115200 baud)
+      description: Connect the device via USB and paste logs from PlatformIO / Serial Monitor, or web interface output.
+      render: shell
+      placeholder: |
+        [BambuDeck][BOOT] Starting...
+        [BambuDeck][WIFI] Connected: 192.168.1.XX
+        [BambuDeck][HA] Error: ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: visual_evidence
+    attributes:
+      label: Screenshots / Photos
+      description: Drag and drop photos of your device screen or screenshot of the Web GUI / Home Assistant entities.
+      placeholder: "Attach images here..."
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-Submission Checklist
+      options:
+        - label: "I have verified that my Home Assistant token and printer entity prefix are correct."
+          required: false
+        - label: "I have tested with adequate 5V power (not an underpowered USB port)."
+          required: false
+        - label: "I checked existing GitHub issues to make sure this is not a duplicate."
+          required: true
