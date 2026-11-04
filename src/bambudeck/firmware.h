@@ -8,6 +8,8 @@
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
+#include <mbedtls/sha256.h>
+#include <time.h>
 
 struct SemVer
 {
@@ -18,6 +20,10 @@ struct SemVer
 
 inline bool parseSemVer(const char *version, SemVer &semver)
 {
+    if (!version || strlen(version) == 0)
+        return false;
+    while (*version == 'v' || *version == 'V')
+        version++;
     int parsed = sscanf(version, "%d.%d.%d", &semver.major, &semver.minor, &semver.patch);
     return parsed == 3;
 }
@@ -44,23 +50,118 @@ inline bool isSemVerGreaterThan(const SemVer &v1, const SemVer &v2)
     return compareSemVer(v1, v2) > 0;
 }
 
-#define BAMBUDECK_FIRMWARE_DOWNLOAD_RETRIES 5
-static byte bambudeck_firmware_updateDownloadRetries = 0;
-
 inline bool bambudeck_firmware_semverNeedsUpdate(const char *compare)
 {
-    SemVer version1, version2;
+    SemVer currentVer, remoteVer;
 
-    if (parseSemVer(BAMBUDECK_FIRMWARE_VERSION, version1) && parseSemVer(compare, version2))
+    if (parseSemVer(BAMBUDECK_FIRMWARE_VERSION, currentVer) && parseSemVer(compare, remoteVer))
     {
-        if (isSemVerGreaterThan(version2, version1))
-        {
-            return true;
-        }
-        return false;
+        return isSemVerGreaterThan(remoteVer, currentVer);
     }
 
     return false;
+}
+
+// Trusted root certificates for GitHub & Azure Release Asset CDN (from Spoolman-CYD)
+static const char kTrustedRoots[] PROGMEM = R"CERT(
+-----BEGIN CERTIFICATE-----
+MIICjzCCAhWgAwIBAgIQXIuZxVqUxdJxVt7NiYDMJjAKBggqhkjOPQQDAzCBiDEL
+MAkGA1UEBhMCVVMxEzARBgNVBAgTCk5ldyBKZXJzZXkxFDASBgNVBAcTC0plcnNl
+eSBDaXR5MR4wHAYDVQQKExVUaGUgVVNFUlRSVVNUIE5ldHdvcmsxLjAsBgNVBAMT
+JVVTRVJUcnVzdCBFQ0MgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkwHhcNMTAwMjAx
+MDAwMDAwWhcNMzgwMTE4MjM1OTU5WjCBiDELMAkGA1UEBhMCVVMxEzARBgNVBAgT
+Ck5ldyBKZXJzZXkxFDASBgNVBAcTC0plcnNleSBDaXR5MR4wHAYDVQQKExVUaGUg
+VVNFUlRSVVNUIE5ldHdvcmsxLjAsBgNVBAMTJVVTRVJUcnVzdCBFQ0MgQ2VydGlm
+aWNhdGlvbiBBdXRob3JpdHkwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAAQarFRaqflo
+I+d61SRvU8Za2EurxtW20eZzca7dnNYMYf3boIkDuAUU7FfO7l0/4iGzzvfUinng
+o4N+LZfQYcTxmdwlkWOrfzCjtHDix6EznPO/LlxTsV+zfTJ/ijTjeXmjQjBAMB0G
+A1UdDgQWBBQ64QmG1M8ZwpZ2dEl23OA1xmNjmjAOBgNVHQ8BAf8EBAMCAQYwDwYD
+VR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAwNoADBlAjA2Z6EWCNzklwBBHU6+4WMB
+zzuqQhFkoJ2UOQIReVx7Hfpkue4WQrO/isIJxOzksU0CMQDpKmFHjFJKS04YcPbW
+RNZu9YO6bVi9JNlWSOrvxKJGgYhqOkbRqZtNyWHa0V1Xahg=
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw
+TzELMAkGA1UEBhMCVVMxKTAnBgNVBAoTIEludGVybmV0IFNlY3VyaXR5IFJlc2Vh
+cmNoIEdyb3VwMRUwEwYDVQQDEwxJU1JHIFJvb3QgWDEwHhcNMTUwNjA0MTEwNDM4
+WhcNMzUwNjA0MTEwNDM4WjBPMQswCQYDVQQGEwJVUzEpMCcGA1UEChMgSW50ZXJu
+ZXQgU2VjdXJpdHkgUmVzZWFyY2ggR3JvdXAxFTATBgNVBAMTDElTUkcgUm9vdCBY
+MTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAK3oJHP0FDfzm54rVygc
+h77ct984kIxuPOZXoHj3dcKi/vVqbvYATyjb3miGbESTtrFj/RQSa78f0uoxmyF+
+0TM8ukj13Xnfs7j/EvEhmkvBioZxaUpmZmyPfjxwv60pIgbz5MDmgK7iS4+3mX6U
+A5/TR5d8mUgjU+g4rk8Kb4Mu0UlXjIB0ttov0DiNewNwIRt18jA8+o+u3dpjq+sW
+T8KOEUt+zwvo/7V3LvSye0rgTBIlDHCNAymg4VMk7BPZ7hm/ELNKjD+Jo2FR3qyH
+B5T0Y3HsLuJvW5iB4YlcNHlsdu87kGJ55tukmi8mxdAQ4Q7e2RCOFvu396j3x+UC
+B5iPNgiV5+I3lg02dZ77DnKxHZu8A/lJBdiB3QW0KtZB6awBdpUKD9jf1b0SHzUv
+KBds0pjBqAlkd25HN7rOrFleaJ1/ctaJxQZBKT5ZPt0m9STJEadao0xAH0ahmbWn
+OlFuhjuefXKnEgV4We0+UXgVCwOPjdAvBbI+e0ocS3MFEvzG6uBQE3xDk3SzynTn
+jh8BCNAw1FtxNrQHusEwMFxIt4I7mKZ9YIqioymCzLq9gwQbooMDQaHWBfEbwrbw
+qHyGO0aoSCqI3Haadr8faqU9GY/rOPNk3sgrDQoo//fb4hVC1CLQJ13hef4Y53CI
+rU7m2Ys6xt0nUW7/vGT1M0NPAgMBAAGjQjBAMA4GA1UdDwEB/wQEAwIBBjAPBgNV
+HRMBAf8EBTADAQH/MB0GA1UdDgQWBBR5tFnme7bl5AFzgAiIyBpY9umbbjANBgkq
+hkiG9w0BAQsFAAOCAgEAVR9YqbyyqFDQDLHYGmkgJykIrGF1XIpu+ILlaS/V9lZL
+ubhzEFnTIZd+50xx+7LSYK05qAvqFyFWhfFQDlnrzuBZ6brJFe+GnY+EgPbk6ZGQ
+3BebYhtF8GaV0nxvwuo77x/Py9auJ/GpsMiu/X1+mvoiBOv/2X/qkSsisRcOj/KK
+NFtY2PwByVS5uCbMiogziUwthDyC3+6WVwW6LLv3xLfHTjuCvjHIInNzktHCgKQ5
+ORAzI4JMPJ+GslWYHb4phowim57iaztXOoJwTdwJx4nLCgdNbOhdjsnvzqvHu7Ur
+TkXWStAmzOVyyghqpZXjFaH3pO3JLF+l+/+sKAIuvtd7u+Nxe5AW0wdeRlN8NwdC
+jNPElpzVmbUq4JUagEiuTDkHzsxHpFKVK7q4+63SM1N95R1NbdWhscdCb+ZAJzVc
+oyi3B43njTOQ5yOf+1CceWxG1bQVs5ZufpsMljq4Ui0/1lvh+wjChP4kqKOJ2qxq
+4RgqsahDYVvTH9w7jXbyLeiNdd8XM2w9U/t7y0Ff/9yi0GE44Za4rF2LN9d11TPA
+mRGunUHBcnWEvgJBQl9nJEiU0Zsnvgc/ubhPgXRR4Xq37Z0j4r7g1SgEEzwxA57d
+emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
+-----END CERTIFICATE-----
+)CERT";
+
+inline bool bambudeck_ensure_clock()
+{
+    if (time(nullptr) > 1710000000)
+        return true;
+    configTime(0, 0, "pool.ntp.org", "time.cloudflare.com");
+    const uint32_t start = millis();
+    while (millis() - start < 5000)
+    {
+        if (time(nullptr) > 1710000000)
+            return true;
+        delay(100);
+        lv_timer_handler();
+    }
+    return (time(nullptr) > 1710000000);
+}
+
+inline void bambudeck_configure_secure_client(WiFiClientSecure &secure)
+{
+    if (bambudeck_ensure_clock())
+    {
+        secure.setCACert(kTrustedRoots);
+    }
+    else
+    {
+        ConsoleInfo.println(F("[BambuDeck][OTA] Clock sync timed out, using insecure SSL"));
+        secure.setInsecure();
+    }
+    secure.setTimeout(25000);
+}
+
+inline void bambudeck_configure_http(HTTPClient &http)
+{
+    http.setTimeout(25000);
+    http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
+    http.setRedirectLimit(6);
+    http.setUserAgent("BambuDeck-HA-OTA/" BAMBUDECK_FIRMWARE_VERSION " (ESP32)");
+}
+
+inline String bambudeck_hex_digest(const uint8_t digest[32])
+{
+    static const char digits[] = "0123456789abcdef";
+    char result[65];
+    for (size_t i = 0; i < 32; ++i)
+    {
+        result[i * 2] = digits[digest[i] >> 4];
+        result[i * 2 + 1] = digits[digest[i] & 0x0F];
+    }
+    result[64] = '\0';
+    return String(result);
 }
 
 static lv_obj_t *bambudeck_ota_modal = NULL;
@@ -134,7 +235,8 @@ inline void bambudeck_ota_progress_show(const char *title)
 
 inline void bambudeck_ota_progress_update(size_t currSize, size_t totalSize)
 {
-    if (totalSize == 0) return;
+    if (totalSize == 0)
+        return;
     int progress = (int)((currSize * 100) / totalSize);
     if (progress < 0) progress = 0;
     if (progress > 100) progress = 100;
@@ -157,6 +259,7 @@ inline void bambudeck_ota_progress_update(size_t currSize, size_t totalSize)
     {
         lv_label_set_text_fmt(introScreenCaption, LV_SYMBOL_CHARGE " Updating %d%%", progress);
     }
+    lv_refr_now(NULL);
     lv_timer_handler();
     lv_task_handler();
 }
@@ -179,6 +282,7 @@ inline void bambudeck_ota_progress_finish(void)
     {
         lv_label_set_text(introScreenCaption, LV_SYMBOL_OK " Update Finished! Rebooting...");
     }
+    lv_refr_now(NULL);
     lv_timer_handler();
     lv_task_handler();
     delay(1500);
@@ -193,202 +297,266 @@ inline void bambudeck_ota_progress_close(void)
         bambudeck_ota_bar = NULL;
         bambudeck_ota_title = NULL;
         bambudeck_ota_percent = NULL;
+        lv_refr_now(NULL);
         lv_timer_handler();
         lv_task_handler();
     }
 }
 
-inline void bambudeck_firmware_onProgress(size_t currSize, size_t totalSize)
+struct BambuDeckOtaManifest
 {
-    bambudeck_ota_progress_update(currSize, totalSize);
-}
+    String version;
+    String firmwareUrl;
+    String sha256;
+    size_t sizeBytes = 0;
+    String md5;
+};
 
-// Fetch ota.json string from GitHub Releases via HTTPClient
-inline bool bambudeck_fetch_ota_manifest(String &outJson)
+// Fetch ota.json manifest from GitHub with Spoolman-CYD architecture
+inline bool bambudeck_fetch_ota_manifest(BambuDeckOtaManifest &manifest, String &errorMsg)
 {
     if (WiFi.status() != WL_CONNECTED)
     {
-        ConsoleError.println(F("[BambuDeck][OTA] WiFi not connected"));
+        errorMsg = "WiFi Not Connected";
         return false;
     }
 
-    WiFiClientSecure client;
-    client.setInsecure();
-    client.setTimeout(15000); // 15 seconds
+    WiFiClientSecure secure;
+    bambudeck_configure_secure_client(secure);
 
     HTTPClient http;
-    http.setUserAgent("Mozilla/5.0 (ESP32; BambuDeck-OTA)");
-    http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
-    http.setRedirectLimit(5);
-    http.setTimeout(15000);
+    bambudeck_configure_http(http);
 
-    if (!http.begin(client, bambudeck_paths_firmware_ota_file))
+    const char *urls[] = {
+        "https://github.com/demonkazuya/BambuDeck-HA/releases/latest/download/ota.json",
+        bambudeck_paths_firmware_ota_file
+    };
+
+    bool fetched = false;
+    for (size_t i = 0; i < sizeof(urls) / sizeof(urls[0]); ++i)
     {
-        ConsoleError.println(F("[BambuDeck][OTA] http.begin failed"));
-        return false;
-    }
-
-    int code = http.GET();
-    if (code == HTTP_CODE_OK)
-    {
-        outJson = http.getString();
-        http.end();
-        ConsoleInfo.printf("[BambuDeck][OTA] Manifest received (%d bytes)\n", outJson.length());
-        return true;
-    }
-
-    ConsoleError.printf("[BambuDeck][OTA] Fetch manifest failed HTTP %d: %s\n", code, http.errorToString(code).c_str());
-    http.end();
-    return false;
-}
-
-// Direct stream HTTP OTA flash into flash partition with real-time progress bar & watchdog safety
-inline bool bambudeck_perform_direct_http_ota(const char *url, const char *expectedMd5 = NULL)
-{
-    if (WiFi.status() != WL_CONNECTED || !url || strlen(url) == 0)
-        return false;
-
-    String currentUrl = String(url);
-    int redirects = 0;
-    HTTPClient http;
-    WiFiClientSecure *client = nullptr;
-    int httpCode = 0;
-
-    // Follow up to 5 HTTP 301/302/303/307 redirects with a fresh SSL connection for each host
-    while (redirects < 6)
-    {
-        if (client != nullptr)
+        ConsoleInfo.printf("[BambuDeck][OTA] Fetching manifest from: %s\n", urls[i]);
+        if (!http.begin(secure, urls[i]))
         {
-            delete client;
-            client = nullptr;
-        }
-        client = new WiFiClientSecure();
-        client->setInsecure();
-        client->setTimeout(15000);
-
-        http.setUserAgent("Mozilla/5.0 (ESP32; BambuDeck-OTA)");
-        http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
-        http.setTimeout(15000);
-
-        if (!http.begin(*client, currentUrl))
-        {
-            ConsoleError.printf("[BambuDeck][OTA] http.begin failed for: %s\n", currentUrl.c_str());
-            http.end();
-            delete client;
-            return false;
-        }
-
-        httpCode = http.GET();
-        if (httpCode == HTTP_CODE_FOUND || httpCode == HTTP_CODE_MOVED_PERMANENTLY ||
-            httpCode == HTTP_CODE_TEMPORARY_REDIRECT || httpCode == 307 || httpCode == 308)
-        {
-            String nextUrl = http.getLocation();
-            ConsoleInfo.printf("[BambuDeck][OTA] Redirect (%d) to: %s\n", httpCode, nextUrl.c_str());
-            http.end();
-            if (nextUrl.length() == 0)
-            {
-                delete client;
-                return false;
-            }
-            currentUrl = nextUrl;
-            redirects++;
             continue;
         }
-        break;
-    }
 
-    if (httpCode != HTTP_CODE_OK)
-    {
-        ConsoleError.printf("[BambuDeck][OTA] Stream firmware failed HTTP %d: %s\n", httpCode, http.errorToString(httpCode).c_str());
-        http.end();
-        if (client) delete client;
-        return false;
-    }
-
-    int contentLength = http.getSize();
-    if (contentLength <= 0)
-    {
-        ConsoleError.println(F("[BambuDeck][OTA] Invalid content length for firmware"));
-        http.end();
-        if (client) delete client;
-        return false;
-    }
-
-    ConsoleInfo.printf("[BambuDeck][OTA] Downloading firmware (%d bytes)...\n", contentLength);
-
-    bambudeck_ota_progress_show(LV_SYMBOL_DOWNLOAD " Downloading Update...");
-    lv_timer_handler();
-    lv_task_handler();
-
-    if (!Update.begin(contentLength, U_FLASH))
-    {
-        ConsoleError.printf("[BambuDeck][OTA] Update.begin failed: %s\n", Update.errorString());
-        http.end();
-        if (client) delete client;
-        return false;
-    }
-
-    if (expectedMd5 && strlen(expectedMd5) > 0)
-    {
-        Update.setMD5(expectedMd5);
-    }
-
-    WiFiClient *stream = http.getStreamPtr();
-    uint8_t buff[1024];
-    size_t totalRead = 0;
-    int lastPct = -1;
-    unsigned long lastDataTime = millis();
-
-    while (http.connected() && (totalRead < (size_t)contentLength))
-    {
-        size_t avail = stream->available();
-        if (avail > 0)
+        int code = http.GET();
+        if (code == HTTP_CODE_OK)
         {
-            int toRead = (avail > sizeof(buff)) ? sizeof(buff) : avail;
-            int bytesRead = stream->readBytes((char *)buff, toRead);
-            if (bytesRead > 0)
-            {
-                Update.write(buff, bytesRead);
-                totalRead += bytesRead;
-                lastDataTime = millis();
+            DynamicJsonDocument doc(1024);
+            DeserializationError err = deserializeJson(doc, http.getStream());
+            http.end();
 
-                int pct = (int)((totalRead * 100) / contentLength);
-                if (pct != lastPct)
+            if (!err)
+            {
+                manifest.version = doc["version"] | "";
+                manifest.firmwareUrl = doc.containsKey("firmware_url") ? (doc["firmware_url"] | "") : (doc["url"] | "");
+                manifest.sha256 = doc["sha256"] | "";
+                manifest.sizeBytes = doc.containsKey("size_bytes") ? (doc["size_bytes"] | 0) : (doc["size"] | 0);
+                manifest.md5 = doc["md5"] | "";
+
+                if (manifest.version.length() > 0 && manifest.firmwareUrl.length() > 0)
                 {
-                    lastPct = pct;
-                    bambudeck_ota_progress_update(totalRead, contentLength);
+                    fetched = true;
+                    ConsoleInfo.printf("[BambuDeck][OTA] Manifest parsed: v%s, size=%d bytes\n",
+                                       manifest.version.c_str(), (int)manifest.sizeBytes);
+                    break;
                 }
+            }
+            else
+            {
+                ConsoleError.printf("[BambuDeck][OTA] JSON parse error: %s\n", err.c_str());
             }
         }
         else
         {
-            delay(5);
-            if (millis() - lastDataTime > 20000)
+            ConsoleError.printf("[BambuDeck][OTA] HTTP GET %d: %s\n", code, http.errorToString(code).c_str());
+            http.end();
+        }
+    }
+
+    if (!fetched)
+    {
+        errorMsg = "Could not reach GitHub release server";
+        return false;
+    }
+
+    return true;
+}
+
+// Install firmware via Spoolman-CYD streaming OTA engine with SHA-256 validation & progress callback
+inline bool bambudeck_perform_ota_install(const BambuDeckOtaManifest &manifest, String &errorMsg)
+{
+    if (WiFi.status() != WL_CONNECTED)
+    {
+        errorMsg = "WiFi Not Connected";
+        return false;
+    }
+
+    if (manifest.firmwareUrl.length() == 0 || manifest.sizeBytes == 0)
+    {
+        errorMsg = "Invalid update manifest";
+        return false;
+    }
+
+    WiFiClientSecure secure;
+    bambudeck_configure_secure_client(secure);
+
+    HTTPClient http;
+    bambudeck_configure_http(http);
+
+    ConsoleInfo.printf("[BambuDeck][OTA] Starting secure download: %s\n", manifest.firmwareUrl.c_str());
+
+    if (!http.begin(secure, manifest.firmwareUrl))
+    {
+        errorMsg = "Could not start firmware download";
+        return false;
+    }
+
+    int status = http.GET();
+    if (status != HTTP_CODE_OK)
+    {
+        errorMsg = status > 0 ? "GitHub returned HTTP " + String(status) : "Could not download firmware";
+        http.end();
+        return false;
+    }
+
+    int contentLength = http.getSize();
+    if (contentLength <= 0 || (size_t)contentLength != manifest.sizeBytes)
+    {
+        errorMsg = "Firmware size mismatch";
+        http.end();
+        return false;
+    }
+
+    if (!Update.begin(manifest.sizeBytes, U_FLASH))
+    {
+        errorMsg = "Not enough space in OTA partition";
+        http.end();
+        return false;
+    }
+
+    mbedtls_sha256_context hash;
+    uint8_t digest[32];
+    bool useSha = (manifest.sha256.length() == 64);
+    if (useSha)
+    {
+        mbedtls_sha256_init(&hash);
+        if (mbedtls_sha256_starts_ret(&hash, 0) != 0)
+        {
+            Update.abort();
+            mbedtls_sha256_free(&hash);
+            http.end();
+            errorMsg = "Could not initialize SHA-256";
+            return false;
+        }
+    }
+    else if (manifest.md5.length() > 0)
+    {
+        Update.setMD5(manifest.md5.c_str());
+    }
+
+    bambudeck_ota_progress_show(LV_SYMBOL_DOWNLOAD " Downloading & Flashing...");
+    lv_refr_now(NULL);
+
+    WiFiClient *stream = http.getStreamPtr();
+    uint8_t buffer[1024];
+    size_t remaining = manifest.sizeBytes;
+    size_t completed = 0;
+    uint32_t lastDataMs = millis();
+    size_t lastProgress = 0;
+
+    while (remaining > 0)
+    {
+        int available = stream->available();
+        if (available <= 0)
+        {
+            if (!http.connected() || millis() - lastDataMs > 20000)
             {
-                ConsoleError.println(F("[BambuDeck][OTA] Download timeout (no data for 20s)"));
                 break;
             }
+            delay(1);
+            continue;
         }
+
+        size_t chunkSize = min(static_cast<size_t>(available), min(sizeof(buffer), remaining));
+        size_t received = stream->readBytes((char *)buffer, chunkSize);
+        if (received == 0)
+            continue;
+
+        lastDataMs = millis();
+
+        if (Update.write(buffer, received) != received)
+        {
+            Update.abort();
+            if (useSha) mbedtls_sha256_free(&hash);
+            http.end();
+            errorMsg = "Firmware flash write failed";
+            return false;
+        }
+
+        if (useSha)
+        {
+            if (mbedtls_sha256_update_ret(&hash, buffer, received) != 0)
+            {
+                Update.abort();
+                mbedtls_sha256_free(&hash);
+                http.end();
+                errorMsg = "SHA-256 hash update failed";
+                return false;
+            }
+        }
+
+        completed += received;
+        remaining -= received;
+
+        if (completed - lastProgress >= 16384 || remaining == 0)
+        {
+            lastProgress = completed;
+            bambudeck_ota_progress_update(completed, manifest.sizeBytes);
+        }
+
         delay(1); // yields to FreeRTOS and feeds watchdog!
     }
 
     http.end();
-    if (client) delete client;
 
-    if (totalRead != (size_t)contentLength)
+    if (remaining != 0)
     {
-        ConsoleError.printf("[BambuDeck][OTA] Download incomplete: %d/%d bytes\n", (int)totalRead, contentLength);
         Update.abort();
+        if (useSha) mbedtls_sha256_free(&hash);
+        errorMsg = "Download incomplete";
         return false;
     }
 
-    if (!Update.end(true))
+    if (useSha)
     {
-        ConsoleError.printf("[BambuDeck][OTA] Update.end failed: %s\n", Update.errorString());
+        if (mbedtls_sha256_finish_ret(&hash, digest) != 0)
+        {
+            Update.abort();
+            mbedtls_sha256_free(&hash);
+            errorMsg = "SHA-256 finalization failed";
+            return false;
+        }
+        mbedtls_sha256_free(&hash);
+
+        String computedSha = bambudeck_hex_digest(digest);
+        if (!computedSha.equalsIgnoreCase(manifest.sha256))
+        {
+            Update.abort();
+            errorMsg = "SHA-256 verification mismatch";
+            return false;
+        }
+    }
+
+    if (!Update.end())
+    {
+        errorMsg = "Could not commit to OTA partition";
         return false;
     }
 
-    ConsoleInfo.println(F("[BambuDeck][OTA] Direct HTTP OTA flash successful!"));
+    ConsoleInfo.println(F("[BambuDeck][OTA] Direct HTTP OTA flash verified and successful!"));
     bambudeck_ota_progress_finish();
     return true;
 }
@@ -402,35 +570,24 @@ inline void bambudeck_firmware_checkOnlineFirmwareUpdate(void)
 
     ConsoleInfo.println(F("[BambuDeck][OTA] Checking for firmware updates on boot..."));
     lv_label_set_text(introScreenCaption, LV_SYMBOL_CHARGE " Checking for Updates...");
-    lv_timer_handler();
-    lv_task_handler();
+    lv_refr_now(NULL);
 
-    String jsonStr;
-    if (!bambudeck_fetch_ota_manifest(jsonStr))
+    BambuDeckOtaManifest manifest;
+    String errorMsg;
+    if (!bambudeck_fetch_ota_manifest(manifest, errorMsg))
     {
-        ConsoleError.println(F("[BambuDeck][OTA] Boot check failed: could not reach manifest"));
+        ConsoleError.printf("[BambuDeck][OTA] Boot check failed: %s\n", errorMsg.c_str());
         return;
     }
 
-    DynamicJsonDocument doc(512);
-    DeserializationError err = deserializeJson(doc, jsonStr);
-    if (err)
+    ConsoleInfo.printf("[BambuDeck][OTA] Boot check: Remote v%s, Current v%s\n",
+                       manifest.version.c_str(), BAMBUDECK_FIRMWARE_VERSION);
+
+    if (bambudeck_firmware_semverNeedsUpdate(manifest.version.c_str()))
     {
-        ConsoleError.printf("[BambuDeck][OTA] Boot check JSON parse error: %s\n", err.c_str());
-        return;
-    }
-
-    const char *remoteVer = doc["version"] | "";
-    const char *downloadUrl = doc["url"] | "";
-    const char *remoteMd5 = doc["md5"] | "";
-
-    ConsoleInfo.printf("[BambuDeck][OTA] Boot check: Remote v%s, Current v%s\n", remoteVer, BAMBUDECK_FIRMWARE_VERSION);
-
-    if (bambudeck_firmware_semverNeedsUpdate(remoteVer))
-    {
-        ConsoleInfo.printf("[BambuDeck][OTA] Boot update found: v%s -> installing...\n", remoteVer);
+        ConsoleInfo.printf("[BambuDeck][OTA] Boot update found: v%s -> installing...\n", manifest.version.c_str());
         bambudeck_ota_progress_show(LV_SYMBOL_DOWNLOAD " Installing Update...");
-        bool ok = bambudeck_perform_direct_http_ota(downloadUrl, remoteMd5);
+        bool ok = bambudeck_perform_ota_install(manifest, errorMsg);
         if (ok)
         {
             ESP.restart();
@@ -438,9 +595,8 @@ inline void bambudeck_firmware_checkOnlineFirmwareUpdate(void)
         else
         {
             bambudeck_ota_progress_close();
-            lv_label_set_text(introScreenCaption, LV_SYMBOL_WARNING " OTA Install Failed");
-            lv_timer_handler();
-            lv_task_handler();
+            lv_label_set_text_fmt(introScreenCaption, LV_SYMBOL_WARNING " OTA Failed: %s", errorMsg.c_str());
+            lv_refr_now(NULL);
             delay(2000);
         }
     }
@@ -448,8 +604,7 @@ inline void bambudeck_firmware_checkOnlineFirmwareUpdate(void)
     {
         ConsoleInfo.println(F("[BambuDeck][OTA] Boot check: Firmware is up to date"));
         lv_label_set_text_fmt(introScreenCaption, LV_SYMBOL_OK " Firmware Up to Date (v%s)", BAMBUDECK_FIRMWARE_VERSION);
-        lv_timer_handler();
-        lv_task_handler();
+        lv_refr_now(NULL);
         delay(600);
     }
 }
@@ -468,52 +623,39 @@ inline void bambudeck_firmware_interactive_check(void)
         return;
     }
 
-    String jsonStr;
-    bool ok = bambudeck_fetch_ota_manifest(jsonStr);
+    BambuDeckOtaManifest manifest;
+    String errorMsg;
+    bool ok = bambudeck_fetch_ota_manifest(manifest, errorMsg);
     if (!ok)
     {
-        ui_confirmPanel_show_custom(LV_SYMBOL_WARNING " Could not reach\nGitHub Release server", "OK", NULL, ui_confirmPanel_NOOP);
-        return;
-    }
-
-    DynamicJsonDocument doc(512);
-    DeserializationError err = deserializeJson(doc, jsonStr);
-    if (err)
-    {
-        ui_confirmPanel_show_custom(LV_SYMBOL_WARNING " Invalid release data", "OK", NULL, ui_confirmPanel_NOOP);
-        return;
-    }
-
-    const char *remoteVer = doc["version"] | "";
-    if (bambudeck_firmware_semverNeedsUpdate(remoteVer))
-    {
         static char msg[128];
-        snprintf(msg, sizeof(msg), LV_SYMBOL_DOWNLOAD " New Version v%s!\n\nCurrent: v%s\nUpdate now?", remoteVer, BAMBUDECK_FIRMWARE_VERSION);
+        snprintf(msg, sizeof(msg), LV_SYMBOL_WARNING " %s", errorMsg.c_str());
+        ui_confirmPanel_show_custom(msg, "OK", NULL, ui_confirmPanel_NOOP);
+        return;
+    }
+
+    if (bambudeck_firmware_semverNeedsUpdate(manifest.version.c_str()))
+    {
+        static BambuDeckOtaManifest pendingManifest;
+        pendingManifest = manifest;
+
+        static char msg[128];
+        snprintf(msg, sizeof(msg), LV_SYMBOL_DOWNLOAD " New Version v%s!\n\nCurrent: v%s\nUpdate now?",
+                 pendingManifest.version.c_str(), BAMBUDECK_FIRMWARE_VERSION);
+
         ui_confirmPanel_show_custom(msg, "Update", "Cancel", []() {
-            // User confirmed update
-            bambudeck_ota_progress_show(LV_SYMBOL_DOWNLOAD " Downloading & Flashing...");
-            String jStr;
-            if (bambudeck_fetch_ota_manifest(jStr))
+            String err;
+            bool success = bambudeck_perform_ota_install(pendingManifest, err);
+            if (success)
             {
-                DynamicJsonDocument d(512);
-                deserializeJson(d, jStr);
-                const char *url = d["url"] | "";
-                const char *md5 = d["md5"] | "";
-                bool success = bambudeck_perform_direct_http_ota(url, md5);
-                if (success)
-                {
-                    ESP.restart();
-                }
-                else
-                {
-                    bambudeck_ota_progress_close();
-                    ui_confirmPanel_show_custom(LV_SYMBOL_WARNING " OTA Update Failed", "OK", NULL, ui_confirmPanel_NOOP);
-                }
+                ESP.restart();
             }
             else
             {
                 bambudeck_ota_progress_close();
-                ui_confirmPanel_show_custom(LV_SYMBOL_WARNING " Download Failed", "OK", NULL, ui_confirmPanel_NOOP);
+                static char errMsg[128];
+                snprintf(errMsg, sizeof(errMsg), LV_SYMBOL_WARNING " %s", err.c_str());
+                ui_confirmPanel_show_custom(errMsg, "OK", NULL, ui_confirmPanel_NOOP);
             }
         });
     }

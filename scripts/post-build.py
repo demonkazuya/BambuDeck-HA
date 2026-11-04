@@ -10,15 +10,13 @@ Import("env")
 env = DefaultEnvironment()
 
 
-def calculate_md5_and_size(file_path):
-    # Create an MD5 hash object
+def calculate_hashes_and_size(file_path):
     md5_hash = hashlib.md5()
+    sha256_hash = hashlib.sha256()
 
     try:
-        # Open the file in binary read mode
         with open(file_path, "rb") as file:
-            # Read the file in chunks
-            chunk_size = 4096  # You can adjust the chunk size as needed
+            chunk_size = 4096
             file_size = 0
 
             while True:
@@ -26,16 +24,14 @@ def calculate_md5_and_size(file_path):
                 if not chunk:
                     break
                 md5_hash.update(chunk)
+                sha256_hash.update(chunk)
                 file_size += len(chunk)
 
-        # Get the hexadecimal representation of the MD5 hash
-        md5_hex = md5_hash.hexdigest()
-
-        return md5_hex, file_size
+        return md5_hash.hexdigest(), sha256_hash.hexdigest(), file_size
 
     except FileNotFoundError:
         print(f"File not found: {file_path}")
-        return None, None
+        return None, None, None
 
 
 def delete_bin_files(directory):
@@ -156,12 +152,14 @@ def post_build_action(source, target, env):
     subprocess.run(esptool_cmd, check=True)
     shutil.copy(factory_bin, "dist/bambudeck.factory.bin")
 
-    # Generate ota.json pointing to raw GitHub binary (direct download without 302 redirect)
-    md5, size = calculate_md5_and_size(fw_bin_target)
+    # Generate ota.json compatible with Spoolman-CYD schema and direct release download
+    md5, sha256, size = calculate_hashes_and_size(fw_bin_target)
     ota_data = {
         "version": version_value,
-        "url": "https://raw.githubusercontent.com/demonkazuya/BambuDeck-HA/main/dist/bambudeck.bin",
-        "release_url": f"https://github.com/demonkazuya/BambuDeck-HA/releases/download/v{version_value}/bambudeck.bin",
+        "firmware_url": f"https://github.com/demonkazuya/BambuDeck-HA/releases/download/v{version_value}/bambudeck.bin",
+        "url": f"https://github.com/demonkazuya/BambuDeck-HA/releases/download/v{version_value}/bambudeck.bin",
+        "sha256": sha256,
+        "size_bytes": size,
         "md5": md5,
         "size": size
     }
