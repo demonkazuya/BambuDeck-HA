@@ -123,7 +123,8 @@ void onSettingsTFTFlipConfirm()
 
 void onSettingsOTA(lv_event_t *e)
 {
-    bambuDeckConfig.otaEnabled = !bambuDeckConfig.otaEnabled;
+    lv_obj_t *sw = lv_event_get_target(e);
+    bambuDeckConfig.otaEnabled = lv_obj_has_state(sw, LV_STATE_CHECKED);
     lv_msg_send(BAMBUDECK_SETTINGS_SAVE, NULL);
 }
 

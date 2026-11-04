@@ -217,8 +217,9 @@ inline bool bambudeck_fetch_ota_manifest(String &outJson)
     client.setTimeout(15000); // 15 seconds
 
     HTTPClient http;
-    http.setUserAgent("BambuDeck-OTA/0.1.0 (ESP32)");
-    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    http.setUserAgent("Mozilla/5.0 (ESP32; BambuDeck-OTA)");
+    http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
+    http.setRedirectLimit(5);
     http.setTimeout(15000);
 
     if (!http.begin(client, bambudeck_paths_firmware_ota_file))
@@ -252,8 +253,9 @@ inline bool bambudeck_perform_direct_http_ota(const char *url, const char *expec
     client.setTimeout(30000); // 30 seconds
 
     HTTPClient http;
-    http.setUserAgent("BambuDeck-OTA/0.1.0 (ESP32)");
-    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    http.setUserAgent("Mozilla/5.0 (ESP32; BambuDeck-OTA)");
+    http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
+    http.setRedirectLimit(5);
     http.setTimeout(30000);
 
     if (!http.begin(client, url))

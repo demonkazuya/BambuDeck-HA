@@ -32,7 +32,7 @@ inline void bambudeck_settings_loadSettings()
         bambuDeckConfig.backlightLevel = 128;
         bambuDeckConfig.tftOffValue = 15;
         bambuDeckConfig.tftInvert = false;
-        bambuDeckConfig.otaEnabled = false;
+        bambuDeckConfig.otaEnabled = true;
         bambuDeckConfig.wakeOnPrint = true;
         bambuDeckConfig.lightMode = false;
         bambuDeckConfig.chamberSensorReadingDiff = 0;

@@ -114,50 +114,68 @@ inline void bambudeck_touch_setup()
 
     while (true)
     {
-        lv_label_set_text(introScreenCaption, "Step 1/2: Touch TOP-LEFT  " LV_SYMBOL_PLUS);
+        lv_label_set_text(introScreenCaption, "Touch the " LV_SYMBOL_PLUS " crosshair with stylus (1/2)");
         lv_obj_set_style_text_color(introScreenCaption, lv_color_hex(0x00ae42), LV_PART_MAIN | LV_STATE_DEFAULT);
         lv_timer_handler();
 
         while (bambudeck_touchScreen.touched())
             ;
+
+        // Draw crosshair at Top-Left (20, 20)
+        tft.drawFastHLine(10, 20, 21, TFT_WHITE);
+        tft.drawFastVLine(20, 10, 21, TFT_WHITE);
+
         while (!bambudeck_touchScreen.touched())
             ;
 
-        delay(150);
+        delay(50);
         p = bambudeck_touchScreen.getPoint();
         x1 = p.x;
         y1 = p.y;
 
-        lv_label_set_text(introScreenCaption, "Step 2/2: Touch BOTTOM-RIGHT  " LV_SYMBOL_PLUS);
+        // Erase crosshair
+        tft.drawFastHLine(10, 20, 21, TFT_BLACK);
+        tft.drawFastVLine(20, 10, 21, TFT_BLACK);
+        delay(400);
+
+        lv_label_set_text(introScreenCaption, "Touch the " LV_SYMBOL_PLUS " crosshair with stylus (2/2)");
         lv_obj_set_style_text_color(introScreenCaption, lv_color_hex(0x00ae42), LV_PART_MAIN | LV_STATE_DEFAULT);
         lv_timer_handler();
 
         while (bambudeck_touchScreen.touched())
             ;
+
+        // Draw crosshair at Bottom-Right (300, 220)
+        tft.drawFastHLine(290, 220, 21, TFT_WHITE);
+        tft.drawFastVLine(300, 210, 21, TFT_WHITE);
+
         while (!bambudeck_touchScreen.touched())
             ;
 
-        delay(150);
+        delay(50);
         p = bambudeck_touchScreen.getPoint();
         x2 = p.x;
         y2 = p.y;
 
-        if (abs(x2 - x1) > 500 && abs(y2 - y1) > 500)
+        // Erase crosshair
+        tft.drawFastHLine(290, 220, 21, TFT_WHITE ? TFT_BLACK : 0);
+        tft.drawFastVLine(300, 210, 21, TFT_BLACK);
+
+        if (abs(x2 - x1) > 400 && abs(y2 - y1) > 400)
         {
             break;
         }
+        delay(400);
     }
 
-    int16_t screenX1 = 30;
-    int16_t screenY1 = 30;
-    int16_t screenX2 = 290;
-    int16_t screenY2 = 210;
+    int16_t xDist = 320 - 40;
+    int16_t yDist = 240 - 40;
 
-    bambudeck_touchConfig.xCalM = (float)(screenX2 - screenX1) / (float)(x2 - x1);
-    bambudeck_touchConfig.xCalC = screenX1 - (bambudeck_touchConfig.xCalM * x1);
+    bambudeck_touchConfig.xCalM = (float)xDist / (float)(x2 - x1);
+    bambudeck_touchConfig.xCalC = 20.0f - ((float)x1 * bambudeck_touchConfig.xCalM);
 
-    bambudeck_touchConfig.yCalM = (float)(screenY2 - screenY1) / (float)(y2 - y1);
-    bambudeck_touchConfig.yCalC = screenY1 - (bambudeck_touchConfig.yCalM * y1);
+    bambudeck_touchConfig.yCalM = (float)yDist / (float)(y2 - y1);
+    bambudeck_touchConfig.yCalC = 20.0f - ((float)y1 * bambudeck_touchConfig.yCalM);
 
     bambudeck_saveTouchConfig(bambudeck_touchConfig);
     ConsoleInfo.println(F("[BambuDeck][TOUCH] Calibration completed and saved"));
