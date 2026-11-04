@@ -593,7 +593,7 @@ lv_obj_t *ui_settingsComponent_create(lv_obj_t *comp_parent)
 
     lv_obj_t *cui_settings_otaLabel;
     cui_settings_otaLabel = lv_label_create(cui_settings_ota);
-    lv_label_set_text(cui_settings_otaLabel, LV_SYMBOL_DOWNLOAD " OTA Updates");
+    lv_label_set_text(cui_settings_otaLabel, LV_SYMBOL_DOWNLOAD " Auto-Update on Boot");
     lv_obj_set_scrollbar_mode(cui_settings_otaLabel, LV_SCROLLBAR_MODE_OFF);
 
     ui_settings_otaSwitch = lv_switch_create(cui_settings_ota);
