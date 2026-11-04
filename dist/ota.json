@@ -1,9 +1,9 @@
 {
-  "version": "0.2.1",
-  "firmware_url": "https://github.com/demonkazuya/BambuDeck-HA/releases/download/v0.2.1/bambudeck.bin",
-  "url": "https://github.com/demonkazuya/BambuDeck-HA/releases/download/v0.2.1/bambudeck.bin",
-  "sha256": "f4e313080fc5dfb2255349de83e8cda499e614423020a8d80cd2c04666c90ce0",
-  "size_bytes": 1744096,
-  "md5": "ddb9853e79db2d14dfba3b2b78a3213f",
-  "size": 1744096
+  "version": "0.2.2",
+  "firmware_url": "https://github.com/demonkazuya/BambuDeck-HA/releases/download/v0.2.2/bambudeck.bin",
+  "url": "https://github.com/demonkazuya/BambuDeck-HA/releases/download/v0.2.2/bambudeck.bin",
+  "sha256": "2213e05f327e3925a4e0c8d7a5e64d14a1328c0e879d09940a08b060019bb11d",
+  "size_bytes": 1743696,
+  "md5": "8b8e9a02254168b5849ea81a45ab5a9c",
+  "size": 1743696
 }
