@@ -60,6 +60,7 @@ void setup()
 
     bambudeck_chamber_timer_init();
     bambudeck_thumbnail_update_ui();
+    bambudeck_screen_startScreenTimer();
 }
 
 void loop()

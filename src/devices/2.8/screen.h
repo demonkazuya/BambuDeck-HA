@@ -45,15 +45,32 @@ inline void bambudeck_screen_setBackLedOff()
     digitalWrite(17, HIGH); // RGB LEDs on CYD are active low
 }
 
-inline void bambudeck_screen_wakeUp()
+inline void bambudeck_screen_startScreenTimer()
 {
     if (bambudeck_screen_onScreenOffTimer != NULL)
     {
-        lv_timer_reset(bambudeck_screen_onScreenOffTimer);
+        if (bambuDeckConfig.tftOffValue >= BAMBUDECK_LCD_MIN_SLEEP_TIME)
+        {
+            uint32_t period = (uint32_t)bambuDeckConfig.tftOffValue * 60000UL;
+            lv_timer_set_period(bambudeck_screen_onScreenOffTimer, period);
+            lv_timer_reset(bambudeck_screen_onScreenOffTimer);
+            lv_timer_resume(bambudeck_screen_onScreenOffTimer);
+            ConsoleInfo.printf("[BambuDeck][SCREEN] Screen sleep timer active: %d minutes\n", bambuDeckConfig.tftOffValue);
+        }
+        else
+        {
+            lv_timer_pause(bambudeck_screen_onScreenOffTimer);
+            ConsoleInfo.println(F("[BambuDeck][SCREEN] Screen sleep disabled"));
+        }
     }
+}
+
+inline void bambudeck_screen_wakeUp()
+{
     bambudeck_screen_touchFromPowerOff = false;
     loadScreen(0);
     bambudeck_screen_setBrightness(bambuDeckConfig.backlightLevel);
+    bambudeck_screen_startScreenTimer();
 }
 
 inline void bambudeck_screen_onScreenOff(lv_timer_t *timer)
@@ -71,16 +88,12 @@ inline void bambudeck_screen_onScreenOff(lv_timer_t *timer)
 
 inline void bambudeck_screen_setupScreenTimer()
 {
-    bambudeck_screen_onScreenOffTimer = lv_timer_create(bambudeck_screen_onScreenOff, bambuDeckConfig.tftOffValue * 1000 * 60, NULL);
-    lv_timer_pause(bambudeck_screen_onScreenOffTimer);
-}
-
-inline void bambudeck_screen_startScreenTimer()
-{
-    if (bambudeck_screen_onScreenOffTimer != NULL)
+    if (bambudeck_screen_onScreenOffTimer == NULL)
     {
-        lv_timer_resume(bambudeck_screen_onScreenOffTimer);
+        uint32_t period = (uint32_t)(bambuDeckConfig.tftOffValue >= BAMBUDECK_LCD_MIN_SLEEP_TIME ? bambuDeckConfig.tftOffValue : 15) * 60000UL;
+        bambudeck_screen_onScreenOffTimer = lv_timer_create(bambudeck_screen_onScreenOff, period, NULL);
     }
+    bambudeck_screen_startScreenTimer();
 }
 
 inline void bambudeck_screen_setScreenTimer(uint32_t period)
@@ -88,6 +101,15 @@ inline void bambudeck_screen_setScreenTimer(uint32_t period)
     if (bambudeck_screen_onScreenOffTimer != NULL)
     {
         lv_timer_set_period(bambudeck_screen_onScreenOffTimer, period);
+        if (bambuDeckConfig.tftOffValue >= BAMBUDECK_LCD_MIN_SLEEP_TIME)
+        {
+            lv_timer_reset(bambudeck_screen_onScreenOffTimer);
+            lv_timer_resume(bambudeck_screen_onScreenOffTimer);
+        }
+        else
+        {
+            lv_timer_pause(bambudeck_screen_onScreenOffTimer);
+        }
     }
 }
 

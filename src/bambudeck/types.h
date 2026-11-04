@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define BAMBUDECK_LCD_MIN_SLEEP_TIME 5
+#define BAMBUDECK_LCD_MIN_SLEEP_TIME 1
 
 #ifdef __cplusplus
 extern "C"

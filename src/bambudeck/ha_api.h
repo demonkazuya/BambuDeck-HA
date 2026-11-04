@@ -1110,6 +1110,7 @@ inline void bambudeck_ha_setup()
     bambudeck_ha_poll_status_worker();
     ui_homeScreen_screen_init();
     lv_disp_load_scr(ui_homeScreen);
+    bambudeck_screen_startScreenTimer();
     lv_timer_handler();
     lv_task_handler();
     bambudeck_ha_process_ui();

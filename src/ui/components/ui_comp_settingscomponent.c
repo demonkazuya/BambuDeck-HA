@@ -369,7 +369,7 @@ lv_obj_t *ui_settingsComponent_create(lv_obj_t *comp_parent)
     lv_obj_set_style_pad_right(cui_settingsTFTOFFPanelLabel, 10, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_settingsTFTOFFSlider = lv_slider_create(cui_settingsTFTOFFPanel);
-    lv_slider_set_range(ui_settingsTFTOFFSlider, 4, 60);
+    lv_slider_set_range(ui_settingsTFTOFFSlider, 0, 60);
     lv_slider_set_value(ui_settingsTFTOFFSlider, bambuDeckConfig.tftOffValue, LV_ANIM_OFF);
     lv_obj_set_height(ui_settingsTFTOFFSlider, 10);
     lv_obj_set_flex_grow(ui_settingsTFTOFFSlider, 1);
