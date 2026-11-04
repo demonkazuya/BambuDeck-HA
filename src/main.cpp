@@ -33,6 +33,7 @@ void bambudeck_intro_show(void)
 void setup()
 {
     Serial.begin(115200);
+    delay(100); // Power rail and flash stabilization on cold boot
 
     bambudeck_eeprom_setup();
     bambudeck_globals_init();

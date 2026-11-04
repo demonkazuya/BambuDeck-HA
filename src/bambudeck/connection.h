@@ -158,29 +158,30 @@ static const char BAMBUDECK_PORTAL_HTML[] PROGMEM = R"rawliteral(
       <button type="button" class="btn-scan" onclick="scanWifi()">&#x21bb; Scan</button>
     </div>
     <div id="custom_ssid_wrap">
-      <input id="custom_ssid" placeholder="Enter WiFi SSID manually">
+      <input id="custom_ssid" value="%CURRENT_SSID%" placeholder="Enter WiFi SSID manually">
     </div>
-    <input type="hidden" name="wifi_ssid" id="wifi_ssid">
+    <input type="hidden" name="wifi_ssid" id="wifi_ssid" value="%CURRENT_SSID%">
 
     <label>WiFi Password</label>
-    <input name="wifi_password" type="password" placeholder="Your WiFi Password">
+    <input name="wifi_password" type="password" placeholder="Leave blank to keep existing password">
 
     <label>Home Assistant URL</label>
-    <input name="ha_url" required placeholder="http://192.168.1.100:8123">
+    <input name="ha_url" required value="%HA_URL%" placeholder="http://192.168.1.100:8123">
     <div class="hint">Include http:// and port :8123 (e.g. http://192.168.1.50:8123)</div>
 
     <label>Home Assistant Long-Lived Access Token</label>
-    <input name="ha_token" required placeholder="YOUR_LONG_LIVED_ACCESS_TOKEN">
+    <input name="ha_token" required value="%HA_TOKEN%" placeholder="YOUR_LONG_LIVED_ACCESS_TOKEN">
     <div class="hint">Create in Home Assistant &rarr; Profile &rarr; Security &rarr; Long-Lived Access Tokens</div>
 
     <label>Printer Entity Prefix (Optional)</label>
-    <input name="name" placeholder="Auto-detect (leave blank or e.g. p1s)">
+    <input name="name" value="%PRINTER_NAME%" placeholder="Auto-detect (leave blank or e.g. p1s)">
     <div class="hint">Leave blank to auto-discover your Bambu printer from Home Assistant</div>
 
     <button type="submit">Save &amp; Connect</button>
   </form>
 </div>
 <script>
+var currentConfigSsid = "%CURRENT_SSID%";
 function onSsidChange() {
   var sel = document.getElementById('ssid_select');
   var wrap = document.getElementById('custom_ssid_wrap');
@@ -206,6 +207,7 @@ function scanWifi() {
   fetch('/scan').then(function(r){ return r.json(); }).then(function(list){
     sel.innerHTML = '';
     var seen = {};
+    var foundCurrent = false;
     for (var i = 0; i < list.length; i++) {
       var net = list[i];
       if (!net.ssid || seen[net.ssid]) continue;
@@ -213,11 +215,18 @@ function scanWifi() {
       var opt = document.createElement('option');
       opt.value = net.ssid;
       opt.textContent = net.ssid + ' (' + net.rssi + ' dBm)';
+      if (currentConfigSsid.length > 0 && net.ssid === currentConfigSsid) {
+        opt.selected = true;
+        foundCurrent = true;
+      }
       sel.appendChild(opt);
     }
     var customOpt = document.createElement('option');
     customOpt.value = '__custom__';
     customOpt.textContent = 'Other / Enter Manually...';
+    if (!foundCurrent && currentConfigSsid.length > 0) {
+      customOpt.selected = true;
+    }
     sel.appendChild(customOpt);
     onSsidChange();
   }).catch(function(){
@@ -260,7 +269,7 @@ void bambudeck_run_setup_portal()
     lv_obj_set_style_text_color(introScreenCaption, lv_color_hex(0x00ae42), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_timer_handler();
 
-    WiFi.disconnect(true);
+    WiFi.disconnect(false, false);
     WiFi.mode(WIFI_AP_STA);
     String cachedScanJson = bambudeck_scan_networks_json();
 
@@ -273,7 +282,12 @@ void bambudeck_run_setup_portal()
     bool saved = false;
 
     server.on("/", HTTP_GET, [&server]() {
-        server.send_P(200, "text/html", BAMBUDECK_PORTAL_HTML);
+        String html = FPSTR(BAMBUDECK_PORTAL_HTML);
+        html.replace("%CURRENT_SSID%", String(bambuDeckConfig.wifiSsid));
+        html.replace("%HA_URL%", String(bambuDeckConfig.haUrl));
+        html.replace("%HA_TOKEN%", String(bambuDeckConfig.haToken));
+        html.replace("%PRINTER_NAME%", String(bambuDeckConfig.printerName));
+        server.send(200, "text/html", html);
     });
 
     server.on("/scan", HTTP_GET, [&server, &cachedScanJson]() {
@@ -296,6 +310,11 @@ void bambudeck_run_setup_portal()
         String ssid = server.arg("wifi_ssid");
         ssid.trim();
         String pwd = server.arg("wifi_password");
+        if (pwd.length() == 0 && ssid == String(bambuDeckConfig.wifiSsid))
+        {
+            pwd = String(bambuDeckConfig.wifiPassword);
+        }
+
         String haUrl = server.arg("ha_url");
         haUrl.trim();
         if (haUrl.length() > 0 && !haUrl.startsWith("http://") && !haUrl.startsWith("https://"))
@@ -306,8 +325,14 @@ void bambudeck_run_setup_portal()
         {
             haUrl = haUrl.substring(0, haUrl.length() - 1);
         }
+
         String haToken = server.arg("ha_token");
         haToken.trim();
+        if (haToken.length() == 0 && haUrl == String(bambuDeckConfig.haUrl))
+        {
+            haToken = String(bambuDeckConfig.haToken);
+        }
+
         String name = server.arg("name");
         name.trim();
 
@@ -323,6 +348,13 @@ void bambudeck_run_setup_portal()
         doc["chamber_sensor"] = true;
 
         bambudeck_filesystem_writeJson(bambudeck_paths_config, doc);
+
+        strncpy(bambuDeckConfig.wifiSsid, ssid.c_str(), sizeof(bambuDeckConfig.wifiSsid) - 1);
+        strncpy(bambuDeckConfig.wifiPassword, pwd.c_str(), sizeof(bambuDeckConfig.wifiPassword) - 1);
+        strncpy(bambuDeckConfig.haUrl, haUrl.c_str(), sizeof(bambuDeckConfig.haUrl) - 1);
+        strncpy(bambuDeckConfig.haToken, haToken.c_str(), sizeof(bambuDeckConfig.haToken) - 1);
+        strncpy(bambuDeckConfig.printerName, name.c_str(), sizeof(bambuDeckConfig.printerName) - 1);
+        bambudeck_nvs_save_config();
 
         server.send(200, "text/html", "<html><body style='background:#141414;color:#00ae42;font-family:sans-serif;text-align:center;padding-top:40px;'><h2>Configuration Saved!</h2><p style='color:#eee;'>BambuDeck is connecting to your WiFi &amp; Home Assistant...</p></body></html>");
         delay(500);
@@ -355,9 +387,16 @@ bool bambudeck_wifi_setup()
     const char *ssid = wifiConfig.containsKey("ssid") ? wifiConfig["ssid"].as<const char *>() : (wifiConfig.containsKey("wifi_ssid") ? wifiConfig["wifi_ssid"].as<const char *>() : NULL);
     const char *pwd = wifiConfig.containsKey("pwd") ? wifiConfig["pwd"].as<const char *>() : (wifiConfig.containsKey("wifi_password") ? wifiConfig["wifi_password"].as<const char *>() : "");
 
+    // Direct check of in-memory config in case NVS was loaded
+    if ((ssid == NULL || strlen(ssid) == 0) && strlen(bambuDeckConfig.wifiSsid) > 0)
+    {
+        ssid = bambuDeckConfig.wifiSsid;
+        pwd = bambuDeckConfig.wifiPassword;
+    }
+
     // Launch portal if WiFi SSID is missing OR Home Assistant URL/Token is not configured
     bool hasHa = strlen(bambuDeckConfig.haUrl) > 0 && strlen(bambuDeckConfig.haToken) > 0;
-    if (wifiConfig.isNull() || ssid == NULL || strlen(ssid) == 0 || !hasHa)
+    if (ssid == NULL || strlen(ssid) == 0 || !hasHa)
     {
         bambudeck_run_setup_portal();
         wifiConfig = bambudeck_load_config();
@@ -374,31 +413,76 @@ bool bambudeck_wifi_setup()
     String ssidPWDString = String(pwd ? pwd : "");
 
     WiFi.mode(WIFI_STA);
-    WiFi.begin(ssidB64String.c_str(), ssidPWDString.c_str());
-    ConsoleInfo.printf("[BambuDeck][WiFi] Connecting to %s ..\n", ssidB64String.c_str());
+    WiFi.setAutoReconnect(true);
+    WiFi.persistent(true);
 
-    lv_label_set_text_fmt(introScreenCaption, LV_SYMBOL_WIFI " Connecting to %s...", ssidB64String.c_str());
-    lv_obj_set_style_text_color(introScreenCaption, lv_color_hex(0xAAAAAA), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_timer_handler();
-    lv_task_handler();
+    const int maxAttempts = 3;
+    bool connected = false;
 
-    unsigned long startAttempt = millis();
-    while (WiFi.status() != WL_CONNECTED)
+    for (int attempt = 1; attempt <= maxAttempts; attempt++)
     {
-        delay(250);
+        ConsoleInfo.printf("[BambuDeck][WiFi] Connecting to %s (attempt %d/%d)...\n",
+                           ssidB64String.c_str(), attempt, maxAttempts);
+
+        if (attempt == 1)
+        {
+            WiFi.begin(ssidB64String.c_str(), ssidPWDString.c_str());
+            lv_label_set_text_fmt(introScreenCaption, LV_SYMBOL_WIFI " Connecting to %s...", ssidB64String.c_str());
+        }
+        else
+        {
+            WiFi.disconnect();
+            delay(200);
+            WiFi.begin(ssidB64String.c_str(), ssidPWDString.c_str());
+            lv_label_set_text_fmt(introScreenCaption, LV_SYMBOL_WIFI " Reconnecting (%d/%d): %s...", attempt, maxAttempts, ssidB64String.c_str());
+        }
+
+        lv_obj_set_style_text_color(introScreenCaption, lv_color_hex(0xAAAAAA), LV_PART_MAIN | LV_STATE_DEFAULT);
         lv_timer_handler();
         lv_task_handler();
 
-        if (millis() - startAttempt > 20000)
+        unsigned long startAttempt = millis();
+        while (WiFi.status() != WL_CONNECTED && (millis() - startAttempt < 15000))
         {
-            ConsoleError.println(F("[BambuDeck][WiFi] Connection timed out, launching setup portal"));
-            lv_label_set_text(introScreenCaption, LV_SYMBOL_WARNING " WiFi Failed - Starting Setup AP");
-            lv_obj_set_style_text_color(introScreenCaption, lv_color_hex(0xff5555), LV_PART_MAIN | LV_STATE_DEFAULT);
+            delay(200);
             lv_timer_handler();
-            delay(1500);
-            bambudeck_run_setup_portal();
-            return false;
+            lv_task_handler();
         }
+
+        if (WiFi.status() == WL_CONNECTED)
+        {
+            connected = true;
+            break;
+        }
+    }
+
+    if (!connected)
+    {
+        ConsoleError.println(F("[BambuDeck][WiFi] Connection failed after retries"));
+        lv_label_set_text(introScreenCaption, LV_SYMBOL_WARNING " WiFi Failed. Touch to Setup AP\nOr wait to retry automatically");
+        lv_obj_set_style_text_color(introScreenCaption, lv_color_hex(0xff5555), LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_timer_handler();
+        lv_task_handler();
+
+        unsigned long waitStart = millis();
+        bool userRequestedSetup = false;
+        while (millis() - waitStart < 8000)
+        {
+            delay(100);
+            lv_timer_handler();
+            lv_task_handler();
+            if (bambudeck_touchScreen.touched())
+            {
+                userRequestedSetup = true;
+                break;
+            }
+        }
+
+        if (userRequestedSetup)
+        {
+            bambudeck_run_setup_portal();
+        }
+        return false;
     }
 
     WiFi.setTxPower(WIFI_POWER_19_5dBm);
