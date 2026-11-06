@@ -69,8 +69,13 @@ inline void bambudeck_screen_wakeUp()
 {
     bambudeck_screen_touchFromPowerOff = false;
     loadScreen(0);
-    bambudeck_screen_setBrightness(bambuDeckConfig.backlightLevel);
+    uint8_t br = (bambuDeckConfig.backlightLevel >= 10) ? (uint8_t)bambuDeckConfig.backlightLevel : 128;
+    bambudeck_screen_setBrightness(br);
     bambudeck_screen_startScreenTimer();
+    if (lv_scr_act() != NULL)
+    {
+        lv_obj_invalidate(lv_scr_act());
+    }
 }
 
 inline void bambudeck_screen_onScreenOff(lv_timer_t *timer)

@@ -27,8 +27,14 @@ inline void bambudeck_device_set_print_state(String state)
     else if (state == "FAILED")
         bambuStatus.print_status = BAMBUDECK_PRINT_STATUS_FAILED;
 
-    if (lastPrintState != state && bambuDeckConfig.wakeOnPrint && state != "IDLE" && state != "FINISH" && state != "FAILED")
+    bool wasPrinting = (lastPrintState == "PREPARE" || lastPrintState == "RUNNING" || lastPrintState == "PAUSE");
+    bool isPrinting = (state == "PREPARE" || state == "RUNNING");
+
+    // Only wake up the LCD when a print is starting (transition from non-printing to printing/preparing),
+    // while keeping auto-sleep active so the screen sleeps normally after the configured timeout.
+    if (!wasPrinting && isPrinting && bambuDeckConfig.wakeOnPrint)
     {
+        ConsoleInfo.println(F("[BambuDeck][SCREEN] Print is starting -> Waking LCD while preserving auto-sleep"));
         bambudeck_screen_wakeUp();
     }
 

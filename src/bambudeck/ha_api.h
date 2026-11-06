@@ -352,8 +352,9 @@ inline bool bambudeck_ha_poll_status_worker()
     // Compact, fast O(1) Jinja2 template for the selected printer prefix `p`
     String tpl = "{% set p = '" + p + "' %}"
                  "{% set d = device_id('sensor.'~p~'_nozzle_temperature') or device_id('sensor.'~p~'_print_status') or device_id('light.'~p~'_chamber_light') or '' %}"
+                 "{% set gc = states('sensor.'~p~'_gcode_state') %}"
                  "{% set st = states('sensor.'~p~'_print_status') %}"
-                 "{% if st in ['unknown','unavailable','None',''] %}{% set st = states('sensor.'~p~'_gcode_state') %}{% endif %}"
+                 "{% if st in ['unknown','unavailable','None',''] %}{% set st = gc %}{% endif %}"
                  "{% set sub = states('sensor.'~p~'_subtask_name') %}"
                  "{% if sub in ['unknown','unavailable','None',''] %}{% set sub = states('sensor.'~p~'_task_name') %}{% endif %}"
                  "{% set spd = states('select.'~p~'_printing_speed') %}"
@@ -416,6 +417,7 @@ inline bool bambudeck_ha_poll_status_worker()
                  "'dev': d,"
                  "'state': st | lower,"
                  "'stage': states('sensor.'~p~'_current_stage') | lower,"
+                 "'gcode': gc | lower if gc not in ['unknown','unavailable','None'] else '',"
                  "'pct': pct_val,"
                  "'rem': rem | round(0) | int,"
                  "'layer': cur_l,"
@@ -481,17 +483,48 @@ inline bool bambudeck_ha_poll_status_worker()
 
     String st = doc["state"] | "idle";
     String stage = doc["stage"] | "";
+    String gcode = doc["gcode"] | "";
+
+    st.toLowerCase();
+    stage.toLowerCase();
+    gcode.toLowerCase();
+
     const char *mappedState = "IDLE";
-    if (st == "running" || st == "printing" || stage == "printing")
+    if (gcode == "running" || st == "running" || st == "printing" || stage == "printing")
+    {
         mappedState = "RUNNING";
-    else if (st == "pause" || st == "paused" || stage == "paused")
+    }
+    else if (gcode == "pause" || gcode == "paused" || st == "pause" || st == "paused" || stage.indexOf("pause") >= 0)
+    {
         mappedState = "PAUSE";
-    else if (st == "finish" || st == "finished")
+    }
+    else if (gcode == "finish" || gcode == "finished" || st == "finish" || st == "finished" || st == "complete" || st == "completed")
+    {
         mappedState = "FINISH";
-    else if (st == "prepare" || st == "preparing" || st == "slicing" || st == "init")
-        mappedState = "PREPARE";
-    else if (st == "failed")
+    }
+    else if (gcode == "failed" || st == "failed" || st == "error")
+    {
         mappedState = "FAILED";
+    }
+    else if (gcode == "prepare" || gcode == "preparing" ||
+             st == "prepare" || st == "preparing" || st == "slicing" || st == "init" ||
+             st == "heating" || st == "heatbed_preheating" || st == "bed_heating" || st == "nozzle_heating" ||
+             st == "auto_bed_leveling" || st == "bed_leveling" || st == "calibrating" ||
+             st == "cleaning_nozzle" || st == "cleaning_nozzle_tip" || st == "homing" || st == "homing_toolhead" ||
+             st == "filament_loading" ||
+             stage == "prepare" || stage == "preparing" || stage == "slicing" ||
+             stage == "heating" || stage == "heatbed_preheating" || stage == "auto_bed_leveling" ||
+             stage == "bed_leveling" || stage == "cleaning_nozzle_tip" ||
+             stage == "calibrating_micro_lidar" || stage == "calibrating_extrusion_flow" ||
+             stage == "calibrating_motor_noise" || stage == "homing" || stage == "homing_toolhead" ||
+             stage == "filament_loading" || stage == "cooling_chamber" || stage == "chamber_heating")
+    {
+        mappedState = "PREPARE";
+    }
+    else if (bambudeck_has_real_subtask && (bambuStatus.current_layer > 0 || (doc["rem"] | 0) > 0))
+    {
+        mappedState = "RUNNING";
+    }
 
     strncpy(bambudeck_ha_pending_state, mappedState, sizeof(bambudeck_ha_pending_state) - 1);
 
