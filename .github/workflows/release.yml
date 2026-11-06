@@ -1,0 +1,40 @@
+name: Build and publish firmware release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Build firmware
+        run: pio run
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          gh release create "$RELEASE_TAG" \
+            "dist/bambudeck.${VERSION}.bin" \
+            "dist/bambudeck.factory.${VERSION}.bin" \
+            "dist/bambudeck.bin" \
+            "dist/bambudeck.factory.bin" \
+            dist/ota.json \
+            --title "BambuDeck-HA ${RELEASE_TAG}" \
+            --generate-notes
