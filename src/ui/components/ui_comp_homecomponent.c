@@ -215,10 +215,18 @@ void onBambuDeckPrintStatus(lv_event_t *e)
 
     ui_confirmPanel_hide();
 
+    int displayPct = bambuStatus.mc_print_percent;
+    if (displayPct == 0 && bambuStatus.total_layers > 0 && bambuStatus.current_layer > 0)
+    {
+        displayPct = (bambuStatus.current_layer * 100) / bambuStatus.total_layers;
+    }
+    if (displayPct < 0) displayPct = 0;
+    if (displayPct > 100) displayPct = 100;
+
     char layerText[32];
     sprintf(layerText, "%d/%d", bambuStatus.current_layer, bambuStatus.total_layers);
     lv_label_set_text(comp_homeComponent[UI_COMP_HOMECOMPONENT_MAINSCREENLEFT_MAINSCREENPLAYER_MAINSCREENCONTROLLER2_MAINSCREENLAYER], layerText);
-    lv_slider_set_value(comp_homeComponent[UI_COMP_HOMECOMPONENT_MAINSCREENLEFT_MAINSCREENPLAYER_MAINSCREENPROGRESSBAR], bambuStatus.mc_print_percent, LV_ANIM_ON);
+    lv_slider_set_value(comp_homeComponent[UI_COMP_HOMECOMPONENT_MAINSCREENLEFT_MAINSCREENPLAYER_MAINSCREENPROGRESSBAR], displayPct, LV_ANIM_ON);
 
     char remainingTimeText[48];
     _ui_seconds_to_timeleft(bambuStatus.mc_left_time, remainingTimeText);
@@ -226,7 +234,7 @@ void onBambuDeckPrintStatus(lv_event_t *e)
     lv_label_set_text(target, remainingTimeText);
     if (ui_mainScreenPercentLabel != NULL)
     {
-        lv_label_set_text_fmt(ui_mainScreenPercentLabel, "%d%%", bambuStatus.mc_print_percent);
+        lv_label_set_text_fmt(ui_mainScreenPercentLabel, "%d%%", displayPct);
     }
 
     lv_obj_t *playPauseButton = comp_homeComponent[UI_COMP_HOMECOMPONENT_MAINSCREENLEFT_MAINSCREENPLAYER_MAINSCREENCONTROLLER_MAINSCREENPLAYPAUSEBUTTON];
@@ -479,8 +487,16 @@ lv_obj_t *ui_homeComponent_create(lv_obj_t *comp_parent)
     lv_obj_set_flex_align(cui_mainScreenStats, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_set_style_pad_row(cui_mainScreenStats, 3, LV_PART_MAIN | LV_STATE_DEFAULT);
 
+    int initPct = bambuStatus.mc_print_percent;
+    if (initPct == 0 && bambuStatus.total_layers > 0 && bambuStatus.current_layer > 0)
+    {
+        initPct = (bambuStatus.current_layer * 100) / bambuStatus.total_layers;
+    }
+    if (initPct < 0) initPct = 0;
+    if (initPct > 100) initPct = 100;
+
     ui_mainScreenPercentLabel = lv_label_create(cui_mainScreenStats);
-    lv_label_set_text(ui_mainScreenPercentLabel, "0%");
+    lv_label_set_text_fmt(ui_mainScreenPercentLabel, "%d%%", initPct);
     lv_obj_set_style_text_font(ui_mainScreenPercentLabel, &lv_font_montserrat_26, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(ui_mainScreenPercentLabel, BAMBU_COLOR_GREEN(), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_add_event_cb(ui_mainScreenPercentLabel, ui_mainScreenPercentLabel_onDelete, LV_EVENT_DELETE, NULL);
@@ -530,12 +546,14 @@ lv_obj_t *ui_homeComponent_create(lv_obj_t *comp_parent)
 
     lv_obj_t *cui_mainScreenLayer;
     cui_mainScreenLayer = lv_label_create(cui_mainScreenController2);
-    lv_label_set_text(cui_mainScreenLayer, "0/0");
+    char layerInitText[32];
+    snprintf(layerInitText, sizeof(layerInitText), "%d/%d", bambuStatus.current_layer, bambuStatus.total_layers);
+    lv_label_set_text(cui_mainScreenLayer, layerInitText);
     lv_obj_set_style_text_font(cui_mainScreenLayer, &lv_font_montserrat_14, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_t *cui_mainScreenProgressBar;
     cui_mainScreenProgressBar = lv_slider_create(cui_mainScreenPlayer);
-    lv_slider_set_value(cui_mainScreenProgressBar, 0, LV_ANIM_OFF);
+    lv_slider_set_value(cui_mainScreenProgressBar, initPct, LV_ANIM_OFF);
     lv_obj_set_width(cui_mainScreenProgressBar, lv_pct(100));
     lv_obj_set_height(cui_mainScreenProgressBar, 8);
     lv_obj_clear_flag(cui_mainScreenProgressBar, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_PRESS_LOCK | LV_OBJ_FLAG_CLICK_FOCUSABLE | LV_OBJ_FLAG_GESTURE_BUBBLE | LV_OBJ_FLAG_SNAPPABLE);
