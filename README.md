@@ -102,3 +102,14 @@ In the **Settings** menu on the touchscreen:
   - **Check for Updates** button.
   - Setup portal launcher / WiFi reconfigure.
 
+---
+
+## ☕ Support the Project
+
+If having a dedicated Bambu touch deck on your desk puts a smile on your face (or saved your build plate from a spaghetti disaster), thank you for supporting the project!
+
+If you're happy with BambuDeck and feeling generous, you can tip me a coffee. Tips directly fund more ESP32 dev boards, test displays, and late-night firmware hacking:
+
+[![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-Tip%20a%20Coffee-F16061?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/demonkazuya)
+
+
