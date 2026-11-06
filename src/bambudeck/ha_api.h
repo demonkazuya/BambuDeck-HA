@@ -358,6 +358,23 @@ inline bool bambudeck_ha_poll_status_worker()
                  "{% if sub in ['unknown','unavailable','None',''] %}{% set sub = states('sensor.'~p~'_task_name') %}{% endif %}"
                  "{% set spd = states('select.'~p~'_printing_speed') %}"
                  "{% if spd in ['unknown','unavailable','None',''] %}{% set spd = states('sensor.'~p~'_speed_profile') %}{% endif %}"
+                 "{% set pct = states('sensor.'~p~'_print_progress') %}"
+                 "{% if pct in ['unknown','unavailable','None',''] %}{% set pct = states('sensor.'~p~'_print_percentage') %}{% endif %}"
+                 "{% if pct in ['unknown','unavailable','None',''] %}{% set pct = states('sensor.'~p~'_progress') %}{% endif %}"
+                 "{% if pct in ['unknown','unavailable','None',''] %}{% set pct = states('sensor.'~p~'_percentage') %}{% endif %}"
+                 "{% if pct in ['unknown','unavailable','None',''] %}{% set pct = states('sensor.'~p~'_print_percent') %}{% endif %}"
+                 "{% if pct in ['unknown','unavailable','None',''] %}{% set pct = states('sensor.'~p~'_mc_print_percent') %}{% endif %}"
+                 "{% if pct in ['unknown','unavailable','None',''] %}{% set pct = states('sensor.'~p~'_mc_percent') %}{% endif %}"
+                 "{% if pct in ['unknown','unavailable','None',''] %}{% set pct = state_attr('sensor.'~p~'_print_status', 'print_progress') or state_attr('sensor.'~p~'_print_status', 'print_percentage') or state_attr('sensor.'~p~'_print_status', 'progress') or state_attr('sensor.'~p~'_print_status', 'percentage') or state_attr('sensor.'~p~'_print_status', 'mc_percent') or state_attr('sensor.'~p~'_print_job', 'print_percentage') or state_attr('sensor.'~p~'_print_job', 'progress') or '' %}{% endif %}"
+                 "{% set pct_val = (pct | string | replace('%', '') | trim | float(0)) | round(0) | int %}"
+                 "{% set cur_l = states('sensor.'~p~'_current_layer') | int(0) %}"
+                 "{% if cur_l == 0 %}{% set cur_l = state_attr('sensor.'~p~'_print_status', 'current_layer') | int(0) %}{% endif %}"
+                 "{% set tot_l = states('sensor.'~p~'_total_layer_count') | int(0) %}"
+                 "{% if tot_l == 0 %}{% set tot_l = states('sensor.'~p~'_total_layers') | int(0) %}{% endif %}"
+                 "{% if tot_l == 0 %}{% set tot_l = state_attr('sensor.'~p~'_print_status', 'total_layer_count') | int(0) %}{% endif %}"
+                 "{% if tot_l == 0 %}{% set tot_l = state_attr('sensor.'~p~'_print_status', 'total_layers') | int(0) %}{% endif %}"
+                 "{% if pct_val == 0 and tot_l > 0 and cur_l > 0 %}{% set pct_val = ((cur_l * 100) / tot_l) | round(0) | int %}{% endif %}"
+                 "{% if pct_val < 0 %}{% set pct_val = 0 %}{% elif pct_val > 100 %}{% set pct_val = 100 %}{% endif %}"
                  "{% set nt = states('number.'~p~'_nozzle_target_temperature') | float(0) %}"
                  "{% if nt == 0 %}{% set nt = states('sensor.'~p~'_nozzle_target_temperature') | float(0) %}{% endif %}"
                  "{% if nt == 0 %}{% set nt = states('sensor.'~p~'_target_nozzle_temperature') | float(0) %}{% endif %}"
@@ -399,10 +416,10 @@ inline bool bambudeck_ha_poll_status_worker()
                  "'dev': d,"
                  "'state': st | lower,"
                  "'stage': states('sensor.'~p~'_current_stage') | lower,"
-                 "'pct': states('sensor.'~p~'_print_progress') | int(0),"
+                 "'pct': pct_val,"
                  "'rem': rem | round(0) | int,"
-                 "'layer': states('sensor.'~p~'_current_layer') | int(0),"
-                 "'layers': states('sensor.'~p~'_total_layer_count') | int(0),"
+                 "'layer': cur_l,"
+                 "'layers': tot_l,"
                  "'subtask': sub,"
                  "'noz': states('sensor.'~p~'_nozzle_temperature') | float(0),"
                  "'noz_t': nt,"
@@ -478,10 +495,31 @@ inline bool bambudeck_ha_poll_status_worker()
 
     strncpy(bambudeck_ha_pending_state, mappedState, sizeof(bambudeck_ha_pending_state) - 1);
 
-    bambuStatus.mc_print_percent = doc["pct"] | 0;
-    bambuStatus.mc_left_time = (doc["rem"] | 0) * 60;
     bambuStatus.current_layer = doc["layer"] | 0;
     bambuStatus.total_layers = doc["layers"] | 0;
+
+    int parsedPct = 0;
+    if (doc["pct"].is<float>())
+    {
+        parsedPct = (int)round(doc["pct"].as<float>());
+    }
+    else if (doc["pct"].is<int>())
+    {
+        parsedPct = doc["pct"].as<int>();
+    }
+    else if (doc["pct"].is<const char *>())
+    {
+        parsedPct = atoi(doc["pct"].as<const char *>());
+    }
+
+    if (parsedPct == 0 && bambuStatus.total_layers > 0 && bambuStatus.current_layer > 0)
+    {
+        parsedPct = (bambuStatus.current_layer * 100) / bambuStatus.total_layers;
+    }
+    if (parsedPct < 0) parsedPct = 0;
+    if (parsedPct > 100) parsedPct = 100;
+    bambuStatus.mc_print_percent = parsedPct;
+    bambuStatus.mc_left_time = (doc["rem"] | 0) * 60;
 
     const char *subtask = doc["subtask"] | "";
     if (strlen(subtask) > 0 && strcmp(subtask, "unknown") != 0 && strcmp(subtask, "unavailable") != 0 && strcmp(subtask, "None") != 0)
