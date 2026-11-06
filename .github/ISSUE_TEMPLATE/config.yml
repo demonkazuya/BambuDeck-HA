@@ -3,3 +3,6 @@ contact_links:
   - name: "BambuDeck-HA Releases"
     url: "https://github.com/demonkazuya/BambuDeck-HA/releases"
     about: "Download the latest firmware binaries and release notes"
+  - name: "Setup & flashing guide"
+    url: "https://github.com/demonkazuya/BambuDeck-HA#readme"
+    about: "Hardware pinouts, Home Assistant token setup, and initial flashing instructions"
