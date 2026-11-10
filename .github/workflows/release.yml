@@ -30,11 +30,20 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           VERSION="${RELEASE_TAG#v}"
-          gh release create "$RELEASE_TAG" \
-            "dist/bambudeck.${VERSION}.bin" \
-            "dist/bambudeck.factory.${VERSION}.bin" \
-            "dist/bambudeck.bin" \
-            "dist/bambudeck.factory.bin" \
-            dist/ota.json \
-            --title "BambuDeck-HA ${RELEASE_TAG}" \
-            --generate-notes
+          FILES=(
+            "dist/bambudeck.${VERSION}.bin"
+            "dist/bambudeck.factory.${VERSION}.bin"
+            "dist/bambudeck.bin"
+            "dist/bambudeck.factory.bin"
+            "dist/ota.json"
+          )
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists, uploading assets..."
+            gh release upload "$RELEASE_TAG" "${FILES[@]}" --clobber
+          else
+            echo "Creating release $RELEASE_TAG..."
+            gh release create "$RELEASE_TAG" \
+              "${FILES[@]}" \
+              --title "BambuDeck-HA ${RELEASE_TAG}" \
+              --generate-notes
+          fi
