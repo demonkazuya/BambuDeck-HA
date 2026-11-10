@@ -11,6 +11,7 @@
 #define BAMBUDECK_DEVICE_CONTROL_MOVE_SPEED_Z  1500
 
 static String lastPrintState = "IDLE";
+static bool hasWokenForCurrentPrint = false;
 
 inline void bambudeck_device_set_print_state(String state)
 {
@@ -27,15 +28,25 @@ inline void bambudeck_device_set_print_state(String state)
     else if (state == "FAILED")
         bambuStatus.print_status = BAMBUDECK_PRINT_STATUS_FAILED;
 
-    bool wasPrinting = (lastPrintState == "PREPARE" || lastPrintState == "RUNNING" || lastPrintState == "PAUSE");
     bool isPrinting = (state == "PREPARE" || state == "RUNNING");
 
-    // Only wake up the LCD when a print is starting (transition from non-printing to printing/preparing),
+    // Only wake up the LCD once when a print is starting/preparing,
     // while keeping auto-sleep active so the screen sleeps normally after the configured timeout.
-    if (!wasPrinting && isPrinting && bambuDeckConfig.wakeOnPrint)
+    if (isPrinting)
     {
-        ConsoleInfo.println(F("[BambuDeck][SCREEN] Print is starting -> Waking LCD while preserving auto-sleep"));
-        bambudeck_screen_wakeUp();
+        if (!hasWokenForCurrentPrint)
+        {
+            hasWokenForCurrentPrint = true;
+            if (bambuDeckConfig.wakeOnPrint)
+            {
+                ConsoleInfo.println(F("[BambuDeck][SCREEN] Print is starting -> Waking LCD while preserving auto-sleep"));
+                bambudeck_screen_wakeUp();
+            }
+        }
+    }
+    else if (state == "IDLE" || state == "FINISH" || state == "FAILED")
+    {
+        hasWokenForCurrentPrint = false;
     }
 
     lastPrintState = state;
@@ -144,26 +155,64 @@ inline void bambudeck_device_onNozzleDown(lv_msg_t *m)
     bambudeck_device_gcode_line("M83 \nG0 E10.0 F900\n");
 }
 
+inline void bambudeck_device_start_preheat_nozzle(int temp = 250)
+{
+    controlMode.target_nozzle_temper = temp;
+    bambuStatus.nozzle_target_temper = temp;
+    bambudeck_device_set_nozzle_target_temp();
+    char gcodeBuf[32];
+    snprintf(gcodeBuf, sizeof(gcodeBuf), "M104 S%d\n", temp);
+    bambudeck_device_gcode_line(String(gcodeBuf));
+}
+
+inline void bambudeck_device_cooldown_nozzle()
+{
+    controlMode.target_nozzle_temper = 0;
+    bambuStatus.nozzle_target_temper = 0;
+    bambudeck_device_set_nozzle_target_temp();
+    bambudeck_device_gcode_line("M104 S0\n");
+}
+
+extern "C" void bambudeck_start_preheat_nozzle(int temp)
+{
+    bambudeck_device_start_preheat_nozzle(temp);
+}
+
+extern "C" void bambudeck_cooldown_nozzle()
+{
+    bambudeck_device_cooldown_nozzle();
+}
+
 inline bool bambudeck_can_load_filament()
 {
-    if (bambuStatus.ams_exist_bits == 0)
-        return true;
-    return (bambuStatus.ams_status_main == AMS_STATUS_MAIN_IDLE && bambuStatus.m_tray_now == 255);
+    return true;
 }
 
 inline void bambudeck_device_onLoadFilament(lv_msg_t *m)
 {
     (void)m;
-    if (bambudeck_can_load_filament())
-    {
-        bambudeck_device_gcode_line("M620 S254\nM106 S255\nM104 S250\nM17 S\nM17 X0.5 Y0.5\nG91\nG1 Y-5 F1200\nG1 Z3\nG90\nG28 X\nM17 R\nG1 X70 F21000\nG1 Y245\nG1 Y265 F3000\nG4\nM106 S0\nM109 S250\nG1 X90\nG1 Y255\nG1 X120\nG1 X20 Y50 F21000\nG1 Y-3\nT254\nG1 X54\nG1 Y265\nG92 E0\nG1 E40 F180\nG4\nG1 X70 F15000\nG1 X76\nG1 X65\nG1 X76\nG1 X65\nG1 X90 F3000\nG1 Y255\nG1 X100\nG1 Y265\nG1 X70 F10000\nG1 X100 F5000\nG1 X70 F10000\nG1 X100 F5000\nG1 X165 F12000\nG1 Y245\nG1 X70\nG1 Y265 F3000\nG91\nG1 Z-3 F1200\nG90\nM621 S254\n\n");
-    }
+    bambudeck_device_start_preheat_nozzle(250);
+
+    DynamicJsonDocument doc(256);
+    if (strlen(bambudeck_selected_device_id) > 0)
+        doc["device_id"] = (const char *)bambudeck_selected_device_id;
+    else if (strlen(bambuDeckConfig.printerName) > 0)
+        doc["entity_id"] = String("sensor.") + String(bambuDeckConfig.printerName) + "_print_status";
+    doc["temperature"] = 250;
+    bambudeck_ha_call_service("bambu_lab", "load_filament", doc);
 }
 
 inline void bambudeck_device_onUnloadFilament(lv_msg_t *m)
 {
     (void)m;
-    bambudeck_device_gcode_line("M620 S255\nM106 P1 S255\nM104 S250\nM17 S\nM17 X0.5 Y0.5\nG91\nG1 Y-5 F3000\nG1 Z3 F1200\nG90\nG28 X\nM17 R\nG1 X70 F21000\nG1 Y245\nG1 Y265 F3000\nG4\nM106 P1 S0\nM109 S250\nG1 X90 F3000\nG1 Y255 F4000\nG1 X100 F5000\nG1 X120 F21000\nG1 X20 Y50\nG1 Y-3\nT255\nG4\nG1 X70 F3000\n\nG91\nG1 Z-3 F1200\nG90\nM621 S255\n\n");
+    bambudeck_device_start_preheat_nozzle(250);
+
+    DynamicJsonDocument doc(256);
+    if (strlen(bambudeck_selected_device_id) > 0)
+        doc["device_id"] = (const char *)bambudeck_selected_device_id;
+    else if (strlen(bambuDeckConfig.printerName) > 0)
+        doc["entity_id"] = String("sensor.") + String(bambuDeckConfig.printerName) + "_print_status";
+    bambudeck_ha_call_service("bambu_lab", "unload_filament", doc);
 }
 
 inline void bambudeck_device_onAmsRefresh(lv_msg_t *m)

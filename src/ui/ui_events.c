@@ -1,6 +1,10 @@
 #include "ui.h"
 #include "../../src/bambudeck/types.h"
 
+extern void bambudeck_send_gcode(const char *cmd);
+extern void bambudeck_cooldown_nozzle(void);
+extern void bambudeck_start_preheat_nozzle(int temp);
+
 void initialActions(lv_event_t *e) {}
 
 /* -----------Sidebar-------------- */
@@ -158,9 +162,12 @@ static lv_obj_t *bambudeck_feed_modal = NULL;
 static lv_obj_t *bambudeck_feed_status_lbl = NULL;
 static bool bambudeck_feed_is_load = true;
 static uint32_t bambudeck_feed_modal_open_time = 0;
+static int bambudeck_feed_last_temp = -1;
+static bool bambudeck_feed_was_heated = false;
 
 static void bambudeck_feed_on_close(lv_event_t *e)
 {
+    bambudeck_cooldown_nozzle();
     bambudeck_hide_feed_dialog();
 }
 
@@ -169,18 +176,22 @@ static void bambudeck_feed_on_purge_retract(lv_event_t *e)
     bambudeck_feed_modal_open_time = millis();
     if (bambudeck_feed_is_load)
     {
-        bambudeck_send_gcode("G1 X54 Y265 F3000\nG92 E0\nG1 E25 F180\nG1 X70 F10000\nG1 X100 F5000\nG1 X70 F10000\nG1 X100 F5000\n");
+        bambudeck_send_gcode("M83\nG1 E25 F180\n");
         if (bambudeck_feed_status_lbl != NULL)
         {
-            lv_label_set_text(bambudeck_feed_status_lbl, "Purging +25mm...\nHas filament extruded?");
+            char buf[128];
+            snprintf(buf, sizeof(buf), "Purging +25mm (%d°C)...\nHas filament extruded?", (int)bambuStatus.nozzle_temper);
+            lv_label_set_text(bambudeck_feed_status_lbl, buf);
         }
     }
     else
     {
-        bambudeck_send_gcode("M83\nG0 E-25.0 F900\n");
+        bambudeck_send_gcode("M83\nG1 E-25 F900\n");
         if (bambudeck_feed_status_lbl != NULL)
         {
-            lv_label_set_text(bambudeck_feed_status_lbl, "Retracting -25mm...\nHas filament pulled out?");
+            char buf[128];
+            snprintf(buf, sizeof(buf), "Retracting -25mm (%d°C)...\nHas filament pulled out?", (int)bambuStatus.nozzle_temper);
+            lv_label_set_text(bambudeck_feed_status_lbl, buf);
         }
     }
 }
@@ -188,12 +199,17 @@ static void bambudeck_feed_on_purge_retract(lv_event_t *e)
 static void bambudeck_feed_on_retry(lv_event_t *e)
 {
     bambudeck_feed_modal_open_time = millis();
+    bambudeck_feed_was_heated = false;
+    bambudeck_feed_last_temp = -1;
+    bambudeck_start_preheat_nozzle(250);
     if (bambudeck_feed_is_load)
     {
         lv_msg_send(BAMBUDECK_COMMAND_LOAD_FILAMENT, NULL);
         if (bambudeck_feed_status_lbl != NULL)
         {
-            lv_label_set_text(bambudeck_feed_status_lbl, "Retrying Load...\nHas filament extruded?");
+            char buf[128];
+            snprintf(buf, sizeof(buf), "Re-heating nozzle: %d°C / 250°C\nPlease wait...", (int)bambuStatus.nozzle_temper);
+            lv_label_set_text(bambudeck_feed_status_lbl, buf);
         }
     }
     else
@@ -201,16 +217,16 @@ static void bambudeck_feed_on_retry(lv_event_t *e)
         lv_msg_send(BAMBUDECK_COMMAND_UNLOAD_FILAMENT, NULL);
         if (bambudeck_feed_status_lbl != NULL)
         {
-            lv_label_set_text(bambudeck_feed_status_lbl, "Retrying Unload...\nHas filament pulled out?");
+            char buf[128];
+            snprintf(buf, sizeof(buf), "Re-heating nozzle: %d°C / 250°C\nPlease wait...", (int)bambuStatus.nozzle_temper);
+            lv_label_set_text(bambudeck_feed_status_lbl, buf);
         }
     }
 }
 
 static void bambudeck_feed_on_done(lv_event_t *e)
 {
-    int32_t zero = 0;
-    onTemperatureNozzle(zero);
-    bambudeck_send_gcode("M104 S0\n");
+    bambudeck_cooldown_nozzle();
     bambudeck_hide_feed_dialog();
 }
 
@@ -281,9 +297,18 @@ void bambudeck_show_feed_dialog(bool isLoad)
 
     bambudeck_feed_status_lbl = lv_label_create(card);
     lv_obj_set_width(bambudeck_feed_status_lbl, lv_pct(100));
-    lv_label_set_text(bambudeck_feed_status_lbl,
-                      isLoad ? "Has filament extruded from nozzle?\n(Nozzle heated to 250°C)"
-                             : "Has filament been pulled out?\n(Nozzle heated to 250°C)");
+    char initBuf[128];
+    if (bambuStatus.nozzle_temper < 235)
+    {
+        snprintf(initBuf, sizeof(initBuf), "Heating nozzle: %d°C / 250°C\nPlease wait for nozzle to heat up...", (int)bambuStatus.nozzle_temper);
+    }
+    else
+    {
+        snprintf(initBuf, sizeof(initBuf), isLoad ? "Nozzle heated (%d°C)!\nInsert filament into extruder.\nHas filament extruded?"
+                                                  : "Nozzle heated (%d°C)!\nRetracting filament...\nHas filament pulled out?",
+                 (int)bambuStatus.nozzle_temper);
+    }
+    lv_label_set_text(bambudeck_feed_status_lbl, initBuf);
     lv_obj_set_style_text_align(bambudeck_feed_status_lbl, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(bambudeck_feed_status_lbl, BAMBU_COLOR_TEXT_PRIMARY(), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(bambudeck_feed_status_lbl, &lv_font_montserrat_14, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -351,17 +376,59 @@ void bambudeck_hide_feed_dialog(void)
         lv_obj_del(bambudeck_feed_modal);
         bambudeck_feed_modal = NULL;
         bambudeck_feed_status_lbl = NULL;
+        bambudeck_feed_was_heated = false;
+        bambudeck_feed_last_temp = -1;
     }
 }
 
 void bambudeck_feed_check_timeout(void)
 {
-    if (bambudeck_feed_modal != NULL && (millis() - bambudeck_feed_modal_open_time > 300000))
+    if (bambudeck_feed_modal != NULL)
     {
-        bambudeck_send_gcode("M104 S0\n");
+        if (millis() - bambudeck_feed_modal_open_time > 300000)
+        {
+            bambudeck_cooldown_nozzle();
+            if (bambudeck_feed_status_lbl != NULL)
+            {
+                lv_label_set_text(bambudeck_feed_status_lbl, "Safety Timeout: Heater cooled down.\nTap Close or Retry.");
+            }
+            return;
+        }
+
         if (bambudeck_feed_status_lbl != NULL)
         {
-            lv_label_set_text(bambudeck_feed_status_lbl, "Safety Timeout: Heater cooled down.\nTap Close or Retry.");
+            int currentTemp = (int)bambuStatus.nozzle_temper;
+            if (currentTemp < 235)
+            {
+                if (currentTemp != bambudeck_feed_last_temp || bambudeck_feed_was_heated)
+                {
+                    bambudeck_feed_last_temp = currentTemp;
+                    bambudeck_feed_was_heated = false;
+                    char buf[128];
+                    snprintf(buf, sizeof(buf), "Heating nozzle: %d°C / 250°C\nPlease wait for nozzle to heat up...", currentTemp);
+                    lv_label_set_text(bambudeck_feed_status_lbl, buf);
+                }
+            }
+            else
+            {
+                if (!bambudeck_feed_was_heated)
+                {
+                    bambudeck_feed_was_heated = true;
+                    bambudeck_feed_last_temp = currentTemp;
+                    char buf[128];
+                    if (bambudeck_feed_is_load)
+                    {
+                        snprintf(buf, sizeof(buf), "Nozzle heated (%d°C)!\nInsert filament into extruder.\nHas filament extruded?", currentTemp);
+                        bambudeck_send_gcode("M83\nG1 E35 F180\n");
+                    }
+                    else
+                    {
+                        snprintf(buf, sizeof(buf), "Nozzle heated (%d°C)!\nRetracting filament...\nHas filament pulled out?", currentTemp);
+                        bambudeck_send_gcode("M83\nG1 E-25 F900\n");
+                    }
+                    lv_label_set_text(bambudeck_feed_status_lbl, buf);
+                }
+            }
         }
     }
 }
