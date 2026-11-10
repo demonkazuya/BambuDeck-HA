@@ -180,6 +180,11 @@ inline int bambudeck_ha_post(const String &path, const String &jsonPayload, Stri
 
 inline void bambudeck_ha_call_service(const char *domain, const char *service, JsonDocument &serviceData)
 {
+    uint32_t startWait = millis();
+    while (bambudeck_ha_cmd_pending && (millis() - startWait < 300))
+    {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
     String body;
     serializeJson(serviceData, body);
     String path = String("/api/services/") + domain + "/" + service;
@@ -485,16 +490,27 @@ inline bool bambudeck_ha_poll_status_worker()
     String stage = doc["stage"] | "";
     String gcode = doc["gcode"] | "";
 
+    st.trim();
     st.toLowerCase();
+    st.replace(" ", "_");
+    st.replace("-", "_");
+
+    stage.trim();
     stage.toLowerCase();
+    stage.replace(" ", "_");
+    stage.replace("-", "_");
+
+    gcode.trim();
     gcode.toLowerCase();
+    gcode.replace(" ", "_");
+    gcode.replace("-", "_");
 
     const char *mappedState = "IDLE";
     if (gcode == "running" || st == "running" || st == "printing" || stage == "printing")
     {
         mappedState = "RUNNING";
     }
-    else if (gcode == "pause" || gcode == "paused" || st == "pause" || st == "paused" || stage.indexOf("pause") >= 0)
+    else if (gcode == "pause" || gcode == "paused" || st == "pause" || st == "paused" || stage.indexOf("pause") >= 0 || st.indexOf("pause") >= 0)
     {
         mappedState = "PAUSE";
     }
@@ -506,24 +522,34 @@ inline bool bambudeck_ha_poll_status_worker()
     {
         mappedState = "FAILED";
     }
-    else if (gcode == "prepare" || gcode == "preparing" ||
-             st == "prepare" || st == "preparing" || st == "slicing" || st == "init" ||
-             st == "heating" || st == "heatbed_preheating" || st == "bed_heating" || st == "nozzle_heating" ||
-             st == "auto_bed_leveling" || st == "bed_leveling" || st == "calibrating" ||
-             st == "cleaning_nozzle" || st == "cleaning_nozzle_tip" || st == "homing" || st == "homing_toolhead" ||
-             st == "filament_loading" ||
-             stage == "prepare" || stage == "preparing" || stage == "slicing" ||
-             stage == "heating" || stage == "heatbed_preheating" || stage == "auto_bed_leveling" ||
-             stage == "bed_leveling" || stage == "cleaning_nozzle_tip" ||
-             stage == "calibrating_micro_lidar" || stage == "calibrating_extrusion_flow" ||
-             stage == "calibrating_motor_noise" || stage == "homing" || stage == "homing_toolhead" ||
-             stage == "filament_loading" || stage == "cooling_chamber" || stage == "chamber_heating")
+    else if (gcode.indexOf("prep") >= 0 ||
+             st.indexOf("prep") >= 0 || st.indexOf("heat") >= 0 || st.indexOf("level") >= 0 ||
+             st.indexOf("clean") >= 0 || st.indexOf("calib") >= 0 || st.indexOf("hom") >= 0 ||
+             st.indexOf("slic") >= 0 || st.indexOf("init") >= 0 || st.indexOf("filament") >= 0 ||
+             stage.indexOf("prep") >= 0 || stage.indexOf("heat") >= 0 || stage.indexOf("level") >= 0 ||
+             stage.indexOf("clean") >= 0 || stage.indexOf("calib") >= 0 || stage.indexOf("hom") >= 0 ||
+             stage.indexOf("slic") >= 0 || stage.indexOf("init") >= 0 || stage.indexOf("filament") >= 0 ||
+             stage.indexOf("chamber") >= 0)
     {
         mappedState = "PREPARE";
     }
-    else if (bambudeck_has_real_subtask && (bambuStatus.current_layer > 0 || (doc["rem"] | 0) > 0))
+    else
     {
-        mappedState = "RUNNING";
+        const char *chkSubtask = doc["subtask"] | "";
+        bool hasSub = (strlen(chkSubtask) > 0 && strcmp(chkSubtask, "unknown") != 0 && strcmp(chkSubtask, "unavailable") != 0 && strcmp(chkSubtask, "None") != 0);
+        float nozTarget = doc["noz_t"] | 0.0f;
+        float bedTarget = doc["bed_t"] | 0.0f;
+        int remTime = doc["rem"] | 0;
+        int curLayer = doc["layer"] | 0;
+
+        if (hasSub && (curLayer > 0 || remTime > 0))
+        {
+            mappedState = "RUNNING";
+        }
+        else if (hasSub && (nozTarget > 50.0f || bedTarget > 35.0f || (stage.length() > 0 && stage != "idle" && stage != "offline")))
+        {
+            mappedState = "PREPARE";
+        }
     }
 
     strncpy(bambudeck_ha_pending_state, mappedState, sizeof(bambudeck_ha_pending_state) - 1);

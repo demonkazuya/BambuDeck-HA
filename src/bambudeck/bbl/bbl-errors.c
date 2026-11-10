@@ -5,6 +5,7 @@
 int hms_error_length = 2009;
 
 const char * const hms_error_keys[] PROGMEM = {
+  "0701230000020013",
   "0702200000020004",
   "0701200000010085",
   "0701110000010001",
@@ -1157,7 +1158,6 @@ const char * const hms_error_keys[] PROGMEM = {
   "0703220000020021",
   "0300930000010008",
   "03000D0000020001",
-  "0701230000020013",
   "0700230000020006",
   "0703210000020006",
   "050003000002000E",
@@ -2017,6 +2017,7 @@ const char * const hms_error_keys[] PROGMEM = {
 };
 
 const char * const hms_error_values[] PROGMEM = {
+  "AMS B slot 4 feeder unit motor has no signal, which may be due to poor contact in the motor connector or a motor fault.",
   "AMS C Slot 1 filament may be broken in the tool head.",
   "Failed to read the filament information from AMS B slot 1. RFID tag verification failed. You can try to use Bambu Lab filament.",
   "The AMS B slot 2 motor has slipped. The extrusion wheel may be malfunctioning, or the filament may be too thin.",
@@ -3169,7 +3170,6 @@ const char * const hms_error_values[] PROGMEM = {
   "AMS D slot 3 assist motor is stalled, due to excessive resistance in the tube between the filament buffer and the toolhead.",
   "Chamber temperature is abnormal. The temperature sensor at power supply may have an open circuit.",
   "Heatbed homing abnormal: there may be a bulge on the heatbed or the nozzle tip may not be clean.",
-  "AMS B slot 4 feeder unit motor has no signal, which may be due to poor contact in the motor connector or a motor fault.",
   "AMS A has detected a breakage of the PTFE tube during filament loading. Please check whether the PTFE tubes inside and outside the AMS have fallen off or been damaged.",
   "AMS D has detected a breakage of the PTFE tube during filament loading. Please check whether the PTFE tubes inside and outside the AMS have fallen off or been damaged.",
   "Some modules are incompatible with the device's firmware version, which may affect use. Please go to the \"Firmware\" page to update after connected to the internet, or you may update offline according to wiki.",
