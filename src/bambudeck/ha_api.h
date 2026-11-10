@@ -66,6 +66,8 @@ static volatile bool bambudeck_ha_cmd_pending = false;
 static char bambudeck_ha_cmd_path[96] = "";
 static char bambudeck_ha_cmd_body[768] = "";
 static volatile int bambudeck_ha_pending_chamber_temp = -999;
+static int bambudeck_ha_consecutive_fails = 0;
+static bool bambudeck_ha_was_connected = true;
 
 inline void bambudeck_ha_init_mutex()
 {
@@ -162,6 +164,7 @@ inline int bambudeck_ha_post(const String &path, const String &jsonPayload, Stri
 
     http.addHeader("Content-Type", "application/json");
     http.addHeader("Authorization", String("Bearer ") + String(bambuDeckConfig.haToken));
+    http.addHeader("Connection", "close");
 
     int code = http.POST(jsonPayload);
     bambudeck_last_http_code = code;
@@ -465,9 +468,30 @@ inline bool bambudeck_ha_poll_status_worker()
     if (httpCode < 200 || httpCode >= 300)
     {
         bambudeck_has_real_subtask = false;
-        snprintf(bambuStatus.subtask_name, sizeof(bambuStatus.subtask_name), "HA Err %d (%s)", httpCode, p.c_str());
+        bambudeck_ha_consecutive_fails++;
+        if (bambudeck_ha_consecutive_fails >= 2)
+        {
+            bambudeck_ha_was_connected = false;
+            snprintf(bambuStatus.subtask_name, sizeof(bambuStatus.subtask_name), "Reconnecting to HA (%d)...", httpCode);
+        }
         bambudeck_ha_ui_dirty = true;
         return false;
+    }
+
+    if (!bambudeck_ha_was_connected)
+    {
+        ConsoleInfo.println(F("[BambuDeck][HA] Connection to Home Assistant restored!"));
+        bambudeck_ha_was_connected = true;
+        if (bambudeck_ha_consecutive_fails >= 10 && bambudeck_printer_count == 0)
+        {
+            bambudeck_ha_discover_printers();
+        }
+        bambudeck_ha_consecutive_fails = 0;
+        bambudeck_ha_ui_dirty = true;
+    }
+    else
+    {
+        bambudeck_ha_consecutive_fails = 0;
     }
 
     DynamicJsonDocument doc(2048);
@@ -1127,7 +1151,7 @@ inline void bambudeck_ha_worker_task(void *param)
             bambudeck_ha_poll_now = true;
         }
 
-        if (bambudeck_ha_pending_chamber_temp > -50 && bambudeck_ha_pending_chamber_temp < 125)
+        if (bambudeck_ha_pending_chamber_temp > -50 && bambudeck_ha_pending_chamber_temp < 125 && bambudeck_ha_consecutive_fails < 2)
         {
             int temp = bambudeck_ha_pending_chamber_temp;
             bambudeck_ha_pending_chamber_temp = -999;

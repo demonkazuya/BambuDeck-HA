@@ -466,6 +466,7 @@ lv_obj_t *ui_homeComponent_create(lv_obj_t *comp_parent)
     lv_obj_set_style_bg_opa(cui_mainScreenThumbFrame, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_border_width(cui_mainScreenThumbFrame, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_all(cui_mainScreenThumbFrame, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_clip_corner(cui_mainScreenThumbFrame, true, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_t *cui_mainScreenNozzleIcon;
     cui_mainScreenNozzleIcon = lv_img_create(cui_mainScreenThumbFrame);

@@ -69,5 +69,6 @@ void loop()
     lv_task_handler();
     bambudeck_ha_process_ui();
     bambudeck_ota_loop();
+    bambudeck_wifi_keepalive_loop();
     delay(5);
 }

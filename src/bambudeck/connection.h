@@ -121,6 +121,37 @@ inline void bambudeck_ota_loop()
     }
 }
 
+inline void bambudeck_wifi_keepalive_loop()
+{
+    static unsigned long lastWifiCheck = 0;
+    static unsigned long wifiDisconnectedSince = 0;
+
+    if (millis() - lastWifiCheck >= 3000)
+    {
+        lastWifiCheck = millis();
+
+        if (WiFi.status() != WL_CONNECTED)
+        {
+            if (wifiDisconnectedSince == 0)
+            {
+                wifiDisconnectedSince = millis();
+                ConsoleInfo.println(F("[BambuDeck][WiFi] Connection lost, monitoring for recovery..."));
+            }
+            else if (millis() - wifiDisconnectedSince >= 10000)
+            {
+                ConsoleError.println(F("[BambuDeck][WiFi] Disconnected for 10s+ -> Forcing WiFi reconnect"));
+                WiFi.disconnect();
+                WiFi.reconnect();
+                wifiDisconnectedSince = millis();
+            }
+        }
+        else
+        {
+            wifiDisconnectedSince = 0;
+        }
+    }
+}
+
 static const char BAMBUDECK_PORTAL_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
 <html>

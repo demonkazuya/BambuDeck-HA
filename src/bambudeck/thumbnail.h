@@ -347,7 +347,7 @@ extern "C" void bambudeck_thumbnail_update_ui()
             if (bambudeck_has_thumb)
             {
                 lv_img_set_src(nozzleIcon, &bambudeck_thumb_dsc);
-                lv_img_set_pivot(nozzleIcon, 0, 0);
+                lv_img_set_pivot(nozzleIcon, BAMBUDECK_THUMB_W / 2, BAMBUDECK_THUMB_H / 2);
                 lv_img_set_zoom(nozzleIcon, BAMBUDECK_THUMB_PRINTING_ZOOM);
                 lv_obj_invalidate(nozzleIcon);
             }
@@ -368,6 +368,8 @@ extern "C" void bambudeck_thumbnail_update_ui()
             if (bambudeck_has_thumb)
             {
                 lv_img_set_src(statusThumb, &bambudeck_thumb_dsc);
+                lv_img_set_pivot(statusThumb, BAMBUDECK_THUMB_W / 2, BAMBUDECK_THUMB_H / 2);
+                lv_img_set_zoom(statusThumb, LV_IMG_ZOOM_NONE);
                 lv_obj_clear_flag(statusThumb, LV_OBJ_FLAG_HIDDEN);
                 lv_obj_add_flag(statusLogo, LV_OBJ_FLAG_HIDDEN);
                 lv_obj_invalidate(statusThumb);
