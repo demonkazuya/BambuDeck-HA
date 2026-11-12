@@ -29,12 +29,13 @@ inline void bambudeck_device_set_print_state(String state)
         bambuStatus.print_status = BAMBUDECK_PRINT_STATUS_FAILED;
 
     bool isPrinting = (state == "PREPARE" || state == "RUNNING");
+    bool wasPrinting = (lastPrintState == "PREPARE" || lastPrintState == "RUNNING");
 
-    // Only wake up the LCD once when a print is starting/preparing,
+    // Only wake up the LCD once when a print starts (transitioning into PREPARE or RUNNING),
     // while keeping auto-sleep active so the screen sleeps normally after the configured timeout.
     if (isPrinting)
     {
-        if (!hasWokenForCurrentPrint)
+        if (!wasPrinting || !hasWokenForCurrentPrint)
         {
             hasWokenForCurrentPrint = true;
             if (bambuDeckConfig.wakeOnPrint)
@@ -44,7 +45,7 @@ inline void bambudeck_device_set_print_state(String state)
             }
         }
     }
-    else if (state == "IDLE" || state == "FINISH" || state == "FAILED")
+    else
     {
         hasWokenForCurrentPrint = false;
     }
@@ -188,16 +189,121 @@ inline bool bambudeck_can_load_filament()
     return true;
 }
 
+extern "C" bool bambudeck_is_a1_printer(void)
+{
+    return bambudeck_is_a1_series;
+}
+
+extern "C" void bambudeck_feed_cut_and_retract(void)
+{
+    if (bambudeck_is_a1_series)
+    {
+        // OrcaSlicer sequence for A1 / A1 mini mechanical cutter and retract:
+        bambudeck_device_gcode_line("G1 X267 F18000\nM400\nG1 Y128 F9000\nM83\nG1 E-25 F1200\n");
+    }
+    else
+    {
+        // OrcaSlicer sequence for CoreXY (X1/P1/H2 series):
+        // 1. Actuate mechanical cutter at front-left (Y-3)
+        // 2. Move toolhead over rear poop chute (X70 Y265)
+        // 3. Retract filament
+        bambudeck_device_gcode_line("G1 X20 Y50 F21000\nG1 Y-3\nG1 X10 F3000\nG1 X20 F12000\nG1 X70 Y265 F15000\nM83\nG1 E-25 F900\n");
+    }
+}
+
+extern "C" void bambudeck_feed_move_to_purge(void)
+{
+    if (bambudeck_is_a1_series)
+    {
+        // OrcaSlicer sequence for A1: move to wiper and extrude:
+        bambudeck_device_gcode_line("G1 Y128 F9000\nM83\nG1 E35 F180\n");
+    }
+    else
+    {
+        // OrcaSlicer sequence for CoreXY (X1/P1): move to rear poop chute (X70 Y265) and extrude:
+        bambudeck_device_gcode_line("G1 X70 Y265 F15000\nM83\nG1 E35 F180\n");
+    }
+}
+
+extern "C" void bambudeck_feed_purge_more(void)
+{
+    if (bambudeck_is_a1_series)
+    {
+        bambudeck_device_gcode_line("G1 Y128 F9000\nM83\nG1 E25 F180\n");
+    }
+    else
+    {
+        bambudeck_device_gcode_line("G1 X70 Y265 F15000\nM83\nG1 E25 F180\n");
+    }
+}
+
+extern "C" void bambudeck_feed_retract_more(void)
+{
+    if (bambudeck_is_a1_series)
+    {
+        bambudeck_device_gcode_line("M83\nG1 E-25 F900\n");
+    }
+    else
+    {
+        bambudeck_device_gcode_line("G1 X70 Y265 F15000\nM83\nG1 E-25 F900\n");
+    }
+}
+
+extern "C" void bambudeck_feed_wipe_and_shake(void)
+{
+    if (bambudeck_is_a1_series)
+    {
+        // OrcaSlicer wiper sequence for A1:
+        bambudeck_device_gcode_line("M400\nG1 X-38.2 F18000\nG1 X-48.2 F3000\nG1 X-38.2 F18000\nG1 X-48.2 F3000\nG1 X-38.2 F18000\nG1 X-48.2 F3000\nM400\n");
+    }
+    else
+    {
+        // OrcaSlicer shake to drop poop into chute & wipe sequence for X1/P1:
+        bambudeck_device_gcode_line("M400\nG1 X70 Y265 F15000\nG1 X80 F15000\nG1 X60\nG1 X80\nG1 X60\nG1 X80\nG1 X100 F5000\nG1 X165 F15000\nG1 Y250 F12000\nM400\n");
+    }
+}
+
+extern "C" void bambudeck_feed_done_notify(void)
+{
+    DynamicJsonDocument doc(256);
+    if (strlen(bambudeck_selected_device_id) > 0)
+        doc["device_id"] = (const char *)bambudeck_selected_device_id;
+    bambudeck_ha_call_service("bambu_lab", "done_load_filament", doc);
+    bambudeck_ha_press_button("resume_printing");
+}
+
+extern "C" void bambudeck_feed_retry_notify(void)
+{
+    DynamicJsonDocument doc(256);
+    if (strlen(bambudeck_selected_device_id) > 0)
+        doc["device_id"] = (const char *)bambudeck_selected_device_id;
+    bambudeck_ha_call_service("bambu_lab", "retry_load_filament", doc);
+}
+
 inline void bambudeck_device_onLoadFilament(lv_msg_t *m)
 {
     (void)m;
     bambudeck_device_start_preheat_nozzle(250);
 
     DynamicJsonDocument doc(256);
-    if (strlen(bambudeck_selected_device_id) > 0)
-        doc["device_id"] = (const char *)bambudeck_selected_device_id;
+    // In ha-bambulab, load_filament requires ONLY entity_id (an AMS tray or external spool sensor)
+    if (strlen(bambudeck_chosen_target_entity_id) > 0)
+    {
+        doc["entity_id"] = (const char *)bambudeck_chosen_target_entity_id;
+        bambudeck_is_ams_active = bambudeck_chosen_target_is_ams;
+    }
+    else if (bambudeck_is_ams_active && strlen(bambudeck_ams_tray_entity_id) > 0)
+    {
+        doc["entity_id"] = (const char *)bambudeck_ams_tray_entity_id;
+    }
+    else if (strlen(bambudeck_ext_spool_entity_id) > 0)
+    {
+        doc["entity_id"] = (const char *)bambudeck_ext_spool_entity_id;
+    }
     else if (strlen(bambuDeckConfig.printerName) > 0)
-        doc["entity_id"] = String("sensor.") + String(bambuDeckConfig.printerName) + "_print_status";
+    {
+        doc["entity_id"] = String("sensor.") + String(bambuDeckConfig.printerName) + "_externalspool_external_spool";
+    }
     doc["temperature"] = 250;
     bambudeck_ha_call_service("bambu_lab", "load_filament", doc);
 }
@@ -208,10 +314,19 @@ inline void bambudeck_device_onUnloadFilament(lv_msg_t *m)
     bambudeck_device_start_preheat_nozzle(250);
 
     DynamicJsonDocument doc(256);
-    if (strlen(bambudeck_selected_device_id) > 0)
+    // In ha-bambulab, unload_filament requires ONLY device_id (an AMS device or external spool device)
+    if (bambudeck_is_ams_active && strlen(bambudeck_ams_device_id) > 0)
+    {
+        doc["device_id"] = (const char *)bambudeck_ams_device_id;
+    }
+    else if (strlen(bambudeck_ext_spool_device_id) > 0)
+    {
+        doc["device_id"] = (const char *)bambudeck_ext_spool_device_id;
+    }
+    else if (strlen(bambudeck_selected_device_id) > 0)
+    {
         doc["device_id"] = (const char *)bambudeck_selected_device_id;
-    else if (strlen(bambuDeckConfig.printerName) > 0)
-        doc["entity_id"] = String("sensor.") + String(bambuDeckConfig.printerName) + "_print_status";
+    }
     bambudeck_ha_call_service("bambu_lab", "unload_filament", doc);
 }
 
@@ -228,23 +343,27 @@ inline void bambudeck_device_command_ams_control(lv_msg_t *m)
     if (!action)
         return;
 
-    if (strcmp(action, "resume") == 0 || strcmp(action, "done") == 0)
+    if (strcmp(action, "resume") == 0)
     {
         bambudeck_ha_press_button("resume_printing");
+        DynamicJsonDocument doc(256);
+        if (strlen(bambudeck_selected_device_id) > 0)
+            doc["device_id"] = (const char *)bambudeck_selected_device_id;
+        bambudeck_ha_call_service("bambu_lab", "retry_load_filament", doc);
+    }
+    else if (strcmp(action, "done") == 0)
+    {
+        bambudeck_ha_press_button("resume_printing");
+        DynamicJsonDocument doc(256);
+        if (strlen(bambudeck_selected_device_id) > 0)
+            doc["device_id"] = (const char *)bambudeck_selected_device_id;
+        bambudeck_ha_call_service("bambu_lab", "done_load_filament", doc);
     }
     else if (strcmp(action, "pause") == 0)
     {
         bambudeck_ha_press_button("pause_printing");
     }
 
-    DynamicJsonDocument doc(256);
-    if (strlen(bambudeck_selected_device_id) > 0)
-        doc["device_id"] = (const char *)bambudeck_selected_device_id;
-    else if (strlen(bambuDeckConfig.printerName) > 0)
-        doc["entity_id"] = String("sensor.") + String(bambuDeckConfig.printerName) + "_print_status";
-    doc["command"] = "ams_control";
-    doc["param"] = action;
-    bambudeck_ha_call_service("bambu_lab", "send_command", doc);
     bambudeck_ha_poll_now = true;
 }
 

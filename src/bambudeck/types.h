@@ -220,6 +220,43 @@ extern "C"
         int print_error;
     } ClearErrorMessage;
 
+    struct BambuDeckSlot
+    {
+        char entity_id[64];
+        uint32_t color;
+        char type[20];
+        bool valid;
+    };
+
+    struct BambuDeckAms
+    {
+        uint8_t ams_num; // 1..4
+        bool valid;
+        struct BambuDeckSlot slots[4];
+    };
+
+    struct BambuDeckFilamentSources
+    {
+        bool has_ext;
+        char ext_entity_id[64];
+        uint32_t ext_color;
+        char ext_type[20];
+
+        uint8_t ams_count;
+        struct BambuDeckAms ams[4];
+    };
+
+    extern struct BambuDeckFilamentSources bambudeck_filament_sources;
+    extern char bambudeck_chosen_target_entity_id[64];
+    extern bool bambudeck_chosen_target_is_ams;
+    extern char bambudeck_chosen_target_label[48];
+    extern bool bambudeck_is_ams_active;
+    extern bool bambudeck_is_ext_spool_active;
+
+    void bambudeck_set_chosen_target(const char *entity_id, bool is_ams, const char *label);
+    void bambudeck_show_load_selector(void);
+    void bambudeck_hide_load_selector(void);
+
 #ifdef __cplusplus
 }
 #endif

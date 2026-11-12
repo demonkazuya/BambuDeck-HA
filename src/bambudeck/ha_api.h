@@ -34,6 +34,12 @@ static BambuDiscoveredPrinter bambudeck_printers[8];
 static int bambudeck_printer_count = 0;
 static int bambudeck_last_http_code = 0;
 static char bambudeck_selected_device_id[48] = "";
+static char bambudeck_ext_spool_device_id[48] = "";
+static char bambudeck_ext_spool_entity_id[64] = "";
+static char bambudeck_ams_device_id[48] = "";
+static char bambudeck_ams_tray_entity_id[64] = "";
+static bool bambudeck_has_ams = false;
+static bool bambudeck_is_a1_series = false;
 
 static volatile bool bambudeck_ha_poll_now = true;
 static volatile bool bambudeck_ha_ui_dirty = false;
@@ -390,10 +396,6 @@ inline bool bambudeck_ha_poll_status_worker()
                  "{% set bt = states('number.'~p~'_bed_target_temperature') | float(0) %}"
                  "{% if bt == 0 %}{% set bt = states('sensor.'~p~'_bed_target_temperature') | float(0) %}{% endif %}"
                  "{% if bt == 0 %}{% set bt = states('sensor.'~p~'_target_bed_temperature') | float(0) %}{% endif %}"
-                 "{% set t1 = state_attr('sensor.'~p~'_ams_1_tray_1', 'color') or state_attr('sensor.'~p~'_tray_1', 'color') or '' %}"
-                 "{% set t2 = state_attr('sensor.'~p~'_ams_1_tray_2', 'color') or state_attr('sensor.'~p~'_tray_2', 'color') or '' %}"
-                 "{% set t3 = state_attr('sensor.'~p~'_ams_1_tray_3', 'color') or state_attr('sensor.'~p~'_tray_3', 'color') or '' %}"
-                 "{% set t4 = state_attr('sensor.'~p~'_ams_1_tray_4', 'color') or state_attr('sensor.'~p~'_tray_4', 'color') or '' %}"
                  "{% set rs = 'sensor.'~p~'_remaining_time' %}"
                  "{% set rv = states(rs) | float(-1) %}"
                  "{% set ru = (state_attr(rs, 'unit_of_measurement') or 'min') | lower %}"
@@ -421,8 +423,68 @@ inline bool bambudeck_ha_poll_status_worker()
                  "{% set hms = states('sensor.'~p~'_hms') | int(0) %}"
                  "{% set hmsd = state_attr('sensor.'~p~'_hms', 'description') or state_attr('sensor.'~p~'_hms', 'errors') or '' %}"
                  "{% set std = state_attr('sensor.'~p~'_print_status', 'message') or state_attr('sensor.'~p~'_print_status', 'error') or '' %}"
+                 "{% set ext_e = 'sensor.'~p~'_externalspool_external_spool' if states('sensor.'~p~'_externalspool_external_spool') not in ['unknown','unavailable','None',''] else ('sensor.'~p~'_external_spool' if states('sensor.'~p~'_external_spool') not in ['unknown','unavailable','None',''] else '') %}"
+                 "{% set ext_d = device_id(ext_e) or device_id('sensor.'~p~'_externalspool_external_spool') or device_id('sensor.'~p~'_external_spool') or '' %}"
+                 "{% set ext_c = state_attr(ext_e, 'color') or '' %}"
+                 "{% set ext_t = state_attr(ext_e, 'type') or states(ext_e) or '' %}"
+                 "{% if ext_t in ['unknown','unavailable','None','none'] %}{% set ext_t = '' %}{% endif %}"
+                 "{% set a1_p = 'sensor.'~p~'_ams_1_tray_' %}"
+                 "{% if states(a1_p~'1') in ['unknown','unavailable','None',''] %}{% set a1_p = 'sensor.'~p~'_tray_' %}{% endif %}"
+                 "{% if states(a1_p~'1') not in ['unknown','unavailable','None',''] %}"
+                   "{% set a1 = ["
+                     "[state_attr(a1_p~'1','color') or '', state_attr(a1_p~'1','type') or states(a1_p~'1') or '', a1_p~'1'],"
+                     "[state_attr(a1_p~'2','color') or '', state_attr(a1_p~'2','type') or states(a1_p~'2') or '', a1_p~'2'],"
+                     "[state_attr(a1_p~'3','color') or '', state_attr(a1_p~'3','type') or states(a1_p~'3') or '', a1_p~'3'],"
+                     "[state_attr(a1_p~'4','color') or '', state_attr(a1_p~'4','type') or states(a1_p~'4') or '', a1_p~'4']"
+                   "] %}"
+                 "{% else %}{% set a1 = [] %}{% endif %}"
+                 "{% set a2_p = 'sensor.'~p~'_ams_2_tray_' %}"
+                 "{% if states(a2_p~'1') not in ['unknown','unavailable','None',''] %}"
+                   "{% set a2 = ["
+                     "[state_attr(a2_p~'1','color') or '', state_attr(a2_p~'1','type') or states(a2_p~'1') or '', a2_p~'1'],"
+                     "[state_attr(a2_p~'2','color') or '', state_attr(a2_p~'2','type') or states(a2_p~'2') or '', a2_p~'2'],"
+                     "[state_attr(a2_p~'3','color') or '', state_attr(a2_p~'3','type') or states(a2_p~'3') or '', a2_p~'3'],"
+                     "[state_attr(a2_p~'4','color') or '', state_attr(a2_p~'4','type') or states(a2_p~'4') or '', a2_p~'4']"
+                   "] %}"
+                 "{% else %}{% set a2 = [] %}{% endif %}"
+                 "{% set a3_p = 'sensor.'~p~'_ams_3_tray_' %}"
+                 "{% if states(a3_p~'1') not in ['unknown','unavailable','None',''] %}"
+                   "{% set a3 = ["
+                     "[state_attr(a3_p~'1','color') or '', state_attr(a3_p~'1','type') or states(a3_p~'1') or '', a3_p~'1'],"
+                     "[state_attr(a3_p~'2','color') or '', state_attr(a3_p~'2','type') or states(a3_p~'2') or '', a3_p~'2'],"
+                     "[state_attr(a3_p~'3','color') or '', state_attr(a3_p~'3','type') or states(a3_p~'3') or '', a3_p~'3'],"
+                     "[state_attr(a3_p~'4','color') or '', state_attr(a3_p~'4','type') or states(a3_p~'4') or '', a3_p~'4']"
+                   "] %}"
+                 "{% else %}{% set a3 = [] %}{% endif %}"
+                 "{% set a4_p = 'sensor.'~p~'_ams_4_tray_' %}"
+                 "{% if states(a4_p~'1') not in ['unknown','unavailable','None',''] %}"
+                   "{% set a4 = ["
+                     "[state_attr(a4_p~'1','color') or '', state_attr(a4_p~'1','type') or states(a4_p~'1') or '', a4_p~'1'],"
+                     "[state_attr(a4_p~'2','color') or '', state_attr(a4_p~'2','type') or states(a4_p~'2') or '', a4_p~'2'],"
+                     "[state_attr(a4_p~'3','color') or '', state_attr(a4_p~'3','type') or states(a4_p~'3') or '', a4_p~'3'],"
+                     "[state_attr(a4_p~'4','color') or '', state_attr(a4_p~'4','type') or states(a4_p~'4') or '', a4_p~'4']"
+                   "] %}"
+                 "{% else %}{% set a4 = [] %}{% endif %}"
+                 "{% set ams_d = device_id('sensor.'~p~'_ams_1_tray_1') or device_id('sensor.'~p~'_tray_1') or device_id('sensor.'~p~'_humidity_index') or '' %}"
+                 "{% set ams_e = 'sensor.'~p~'_ams_1_tray_1' if states('sensor.'~p~'_ams_1_tray_1') not in ['unknown','unavailable','None',''] else ('sensor.'~p~'_tray_1' if states('sensor.'~p~'_tray_1') not in ['unknown','unavailable','None',''] else '') %}"
+                 "{% set ext_act = state_attr(ext_e, 'active') == true or states('binary_sensor.'~p~'_externalspool_active') == 'on' or states('binary_sensor.'~p~'_external_spool_active') == 'on' %}"
+                 "{% set is_ams_act = (ams_d != '') and (not ext_act) and (states('sensor.'~p~'_active_tray') not in ['none','unknown','unavailable','None',''] or states('binary_sensor.'~p~'_extruder_filament_state') in ['on','1','true']) %}"
+                 "{% set p_model = device_attr('sensor.'~p~'_nozzle_temperature', 'model') or '' %}"
                  "{{ {"
                  "'dev': d,"
+                 "'ext_d': ext_d,"
+                 "'ext_e': ext_e,"
+                 "'ext_c': ext_c,"
+                 "'ext_t': ext_t,"
+                 "'ext_act': 1 if ext_act else 0,"
+                 "'ams_d': ams_d,"
+                 "'ams_e': ams_e,"
+                 "'ams_act': 1 if is_ams_act else 0,"
+                 "'ams1': a1,"
+                 "'ams2': a2,"
+                 "'ams3': a3,"
+                 "'ams4': a4,"
+                 "'model': p_model,"
                  "'state': st | lower,"
                  "'stage': states('sensor.'~p~'_current_stage') | lower,"
                  "'gcode': gc | lower if gc not in ['unknown','unavailable','None'] else '',"
@@ -448,7 +510,7 @@ inline bool bambudeck_ha_poll_status_worker()
                  "'light': 1 if states('light.'~p~'_chamber_light') == 'on' else 0,"
                  "'cov_s': cov_s,"
                  "'cov_u': cov_u,"
-                 "'trays': [t1, t2, t3, t4],"
+                 "'trays': [a1[0][0], a1[1][0], a1[2][0], a1[3][0]] if (a1 | length) == 4 else [],"
                  "'pe': pe if pe not in ['unknown','unavailable','None','ok','OK','none',''] else '0',"
                  "'ped': ped | string,"
                  "'pec': pec | string,"
@@ -494,7 +556,7 @@ inline bool bambudeck_ha_poll_status_worker()
         bambudeck_ha_consecutive_fails = 0;
     }
 
-    DynamicJsonDocument doc(2048);
+    DynamicJsonDocument doc(3072);
     DeserializationError err = deserializeJson(doc, respBody);
     if (err)
     {
@@ -509,6 +571,90 @@ inline bool bambudeck_ha_poll_status_worker()
     {
         strncpy(bambudeck_selected_device_id, devId, sizeof(bambudeck_selected_device_id) - 1);
     }
+
+    const char *extD = doc["ext_d"] | "";
+    if (strlen(extD) > 0)
+        strncpy(bambudeck_ext_spool_device_id, extD, sizeof(bambudeck_ext_spool_device_id) - 1);
+
+    const char *extE = doc["ext_e"] | "";
+    const char *extC = doc["ext_c"] | "";
+    const char *extT = doc["ext_t"] | "";
+    if (strlen(extE) > 0)
+    {
+        strncpy(bambudeck_ext_spool_entity_id, extE, sizeof(bambudeck_ext_spool_entity_id) - 1);
+        bambudeck_filament_sources.has_ext = true;
+        strncpy(bambudeck_filament_sources.ext_entity_id, extE, sizeof(bambudeck_filament_sources.ext_entity_id) - 1);
+        bambudeck_filament_sources.ext_color = bambudeck_parse_hex_color(extC);
+        strncpy(bambudeck_filament_sources.ext_type, extT, sizeof(bambudeck_filament_sources.ext_type) - 1);
+    }
+
+    const char *amsD = doc["ams_d"] | "";
+    if (strlen(amsD) > 0)
+    {
+        strncpy(bambudeck_ams_device_id, amsD, sizeof(bambudeck_ams_device_id) - 1);
+        bambudeck_has_ams = true;
+    }
+    else
+    {
+        bambudeck_has_ams = false;
+    }
+
+    const char *amsE = doc["ams_e"] | "";
+    if (strlen(amsE) > 0)
+        strncpy(bambudeck_ams_tray_entity_id, amsE, sizeof(bambudeck_ams_tray_entity_id) - 1);
+
+    bambudeck_is_ams_active = (doc["ams_act"] | 0) == 1;
+    bambudeck_is_ext_spool_active = (doc["ext_act"] | 0) == 1;
+
+    // Parse AMS units 1..4
+    uint8_t validAmsCount = 0;
+    for (int a = 0; a < 4; a++)
+    {
+        char k[8];
+        snprintf(k, sizeof(k), "ams%d", a + 1);
+        bambudeck_filament_sources.ams[a].valid = false;
+        bambudeck_filament_sources.ams[a].ams_num = a + 1;
+        if (doc.containsKey(k) && doc[k].is<JsonArray>())
+        {
+            JsonArray arr = doc[k].as<JsonArray>();
+            if (arr.size() == 4)
+            {
+                bambudeck_filament_sources.ams[a].valid = true;
+                validAmsCount++;
+                for (int s = 0; s < 4; s++)
+                {
+                    JsonArray slotArr = arr[s].as<JsonArray>();
+                    if (slotArr.size() >= 3)
+                    {
+                        const char *cStr = slotArr[0] | "";
+                        const char *tStr = slotArr[1] | "";
+                        const char *eStr = slotArr[2] | "";
+                        bambudeck_filament_sources.ams[a].slots[s].color = bambudeck_parse_hex_color(cStr);
+                        strncpy(bambudeck_filament_sources.ams[a].slots[s].type, tStr, sizeof(bambudeck_filament_sources.ams[a].slots[s].type) - 1);
+                        strncpy(bambudeck_filament_sources.ams[a].slots[s].entity_id, eStr, sizeof(bambudeck_filament_sources.ams[a].slots[s].entity_id) - 1);
+                        bambudeck_filament_sources.ams[a].slots[s].valid = (strlen(eStr) > 0);
+                        if (a == 0)
+                        {
+                            bambudeck_ams_colors[s] = bambudeck_filament_sources.ams[0].slots[s].color;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    bambudeck_filament_sources.ams_count = validAmsCount;
+    if (validAmsCount > 0)
+    {
+        bambudeck_has_ams = true;
+        bambudeck_ams_tray_count = 4;
+        bambuStatus.ams = true;
+    }
+
+    const char *pModel = doc["model"] | "";
+    if (strcasestr(pModel, "A1") != NULL || strcasestr(p.c_str(), "a1") != NULL)
+        bambudeck_is_a1_series = true;
+    else
+        bambudeck_is_a1_series = false;
 
     String st = doc["state"] | "idle";
     String stage = doc["stage"] | "";
@@ -1226,6 +1372,24 @@ inline void bambudeck_ha_setup()
     else
     {
         ConsoleInfo.printf("[BambuDeck][HA] Using last selected printer: %s\n", bambuDeckConfig.printerName);
+    }
+
+    if (strlen(bambuDeckConfig.printerName) > 0)
+    {
+        bambudeck_filament_sources.has_ext = true;
+        snprintf(bambudeck_filament_sources.ext_entity_id, sizeof(bambudeck_filament_sources.ext_entity_id), "sensor.%s_externalspool_external_spool", bambuDeckConfig.printerName);
+        bambudeck_filament_sources.ext_color = 0xFFFFFF;
+        strncpy(bambudeck_filament_sources.ext_type, "External", sizeof(bambudeck_filament_sources.ext_type) - 1);
+
+        bambudeck_filament_sources.ams_count = 1;
+        bambudeck_filament_sources.ams[0].valid = true;
+        bambudeck_filament_sources.ams[0].ams_num = 1;
+        for (int s = 0; s < 4; s++)
+        {
+            snprintf(bambudeck_filament_sources.ams[0].slots[s].entity_id, sizeof(bambudeck_filament_sources.ams[0].slots[s].entity_id), "sensor.%s_ams_1_tray_%d", bambuDeckConfig.printerName, s + 1);
+            bambudeck_filament_sources.ams[0].slots[s].valid = true;
+            bambudeck_filament_sources.ams[0].slots[s].color = bambudeck_ams_colors[s];
+        }
     }
 
     bambudeck_ha_poll_status_worker();
