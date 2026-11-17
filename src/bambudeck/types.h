@@ -252,6 +252,8 @@ extern "C"
     extern char bambudeck_chosen_target_label[48];
     extern bool bambudeck_is_ams_active;
     extern bool bambudeck_is_ext_spool_active;
+    void bambudeck_thumbnail_clear(void);
+    void bambudeck_thumbnail_free(void);
 
     void bambudeck_set_chosen_target(const char *entity_id, bool is_ams, const char *label);
     void bambudeck_show_load_selector(void);

@@ -65,7 +65,7 @@ inline void bambudeck_ota_setup()
         bambudeck_ota_server.send_P(200, "text/html", BAMBUDECK_OTA_HTML);
     });
     bambudeck_ota_server.on("/ip", HTTP_GET, []() {
-        String json = String("{\"ip\":\"") + WiFi.localIP().toString() + "\",\"printer\":\"" + String(bambuDeckConfig.printerName) + "\"}";
+        String json = String("{\"ip\":\"") + WiFi.localIP().toString() + "\",\"printer\":\"" + String(bambuDeckConfig.printerName) + "\",\"heap\":" + String(ESP.getFreeHeap()) + "}";
         bambudeck_ota_server.send(200, "application/json", json);
     });
     bambudeck_ota_server.on(
@@ -85,6 +85,7 @@ inline void bambudeck_ota_setup()
             if (upload.status == UPLOAD_FILE_START)
             {
                 ConsoleInfo.printf("[BambuDeck][OTA] HTTP Upload Start: %s\n", upload.filename.c_str());
+                bambudeck_thumbnail_free();
                 Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH);
             }
             else if (upload.status == UPLOAD_FILE_WRITE)

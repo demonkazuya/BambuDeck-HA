@@ -464,6 +464,7 @@ inline bool bambudeck_perform_ota_install(const BambuDeckOtaManifest &manifest, 
         return false;
     }
 
+    bambudeck_thumbnail_free();
     if (!Update.begin(manifest.sizeBytes, U_FLASH))
     {
         errorMsg = "Not enough space in OTA partition";

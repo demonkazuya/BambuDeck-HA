@@ -2,9 +2,11 @@
 #include <pgmspace.h>
 
 
-int hms_error_length = 2009;
+int hms_error_length = 2011;
 
 const char * const hms_error_keys[] PROGMEM = {
+  "0500020000030012",
+  "0500020000030013",
   "0701230000020013",
   "0702200000020004",
   "0701200000010085",
@@ -2017,6 +2019,8 @@ const char * const hms_error_keys[] PROGMEM = {
 };
 
 const char * const hms_error_values[] PROGMEM = {
+  "",
+  "",
   "AMS B slot 4 feeder unit motor has no signal, which may be due to poor contact in the motor connector or a motor fault.",
   "AMS C Slot 1 filament may be broken in the tool head.",
   "Failed to read the filament information from AMS B slot 1. RFID tag verification failed. You can try to use Bambu Lab filament.",
@@ -4727,7 +4731,7 @@ const char * const device_error_values[] PROGMEM = {
   "The nozzle is clogged.",
   "Binding configuration information parsing failed; please try again.",
   "Failed to pull out the filament from the extruder. This might be caused by clogged extruder or filament broken inside the extruder.",
-  "The file system of the current MicroSD card is not supported. Please replace the card or format it to FAT32.",
+  "The current SD card format is not supported. Please format the SD card.",
   "AMS-HT F is in Feed Assist Mode. Unable to start drying. Please try again later.",
   "AMS-HT C is assisting in filament insertion. Unable to start drying. Please try again later.",
   "AMS-HT G is changing filament. Unable to start drying. Please try again later.",

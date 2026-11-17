@@ -19,11 +19,15 @@
 #define BAMBUDECK_THUMB_BUF_SIZE (BAMBUDECK_THUMB_W * BAMBUDECK_THUMB_H * BAMBUDECK_THUMB_PX_BYTES)
 #define BAMBUDECK_THUMB_PRINTING_ZOOM 171 // 80px / 120px * 256
 
+#define BAMBUDECK_THUMB_MAX_RETRIES 12
+#define BAMBUDECK_THUMB_RETRY_INTERVAL_MS 4000
+
 static uint8_t *bambudeck_thumb_pixels = NULL;
 static lv_img_dsc_t bambudeck_thumb_dsc;
 static volatile bool bambudeck_has_thumb = false;
 static char bambudeck_last_thumb_key[128] = "";
 static int bambudeck_thumb_retry_count = 0;
+static unsigned long bambudeck_thumb_last_attempt_ms = 0;
 
 inline bool bambudeck_thumb_alloc()
 {
@@ -41,7 +45,7 @@ inline bool bambudeck_thumb_alloc()
 struct BambuStreamingPngCtx
 {
     tinfl_decompressor inflator;
-    uint8_t dict[TINFL_LZ_DICT_SIZE];
+    uint8_t *dict;
     size_t dict_ofs;
 
     uint32_t width;
@@ -52,8 +56,8 @@ struct BambuStreamingPngCtx
     uint8_t bpp;
     uint32_t row_bytes;
 
-    uint8_t prev_row[2052];
-    uint8_t curr_row[2052];
+    uint8_t *prev_row;
+    uint8_t *curr_row;
     uint32_t row_pos;
     uint32_t cur_y;
 
@@ -66,6 +70,47 @@ struct BambuStreamingPngCtx
     bool done;
     bool error;
 };
+
+static void bambudeck_png_ctx_free(BambuStreamingPngCtx *ctx)
+{
+    if (ctx)
+    {
+        if (ctx->dict)
+        {
+            free(ctx->dict);
+            ctx->dict = NULL;
+        }
+        if (ctx->curr_row)
+        {
+            free(ctx->curr_row);
+            ctx->curr_row = NULL;
+        }
+        if (ctx->prev_row)
+        {
+            free(ctx->prev_row);
+            ctx->prev_row = NULL;
+        }
+        free(ctx);
+    }
+}
+
+static BambuStreamingPngCtx *bambudeck_png_ctx_alloc()
+{
+    BambuStreamingPngCtx *ctx = (BambuStreamingPngCtx *)calloc(1, sizeof(BambuStreamingPngCtx));
+    if (!ctx)
+        return NULL;
+    ctx->dict = (uint8_t *)malloc(TINFL_LZ_DICT_SIZE);
+    ctx->curr_row = (uint8_t *)malloc(2052);
+    ctx->prev_row = (uint8_t *)malloc(2052);
+    if (!ctx->dict || !ctx->curr_row || !ctx->prev_row)
+    {
+        bambudeck_png_ctx_free(ctx);
+        return NULL;
+    }
+    tinfl_init(&ctx->inflator);
+    memset(ctx->trns, 255, sizeof(ctx->trns));
+    return ctx;
+}
 
 static inline uint8_t bambudeck_paeth(uint8_t a, uint8_t b, uint8_t c)
 {
@@ -256,7 +301,7 @@ static inline uint32_t bambudeck_read_be32(const uint8_t *p)
     return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | (uint32_t)p[3];
 }
 
-static bool bambudeck_stream_read_exact(WiFiClient *stream, uint8_t *buf, size_t len, uint32_t timeoutMs = 4000)
+static bool bambudeck_stream_read_exact(WiFiClient *stream, uint8_t *buf, size_t len, uint32_t timeoutMs = 6000)
 {
     size_t got = 0;
     unsigned long start = millis();
@@ -282,9 +327,9 @@ static bool bambudeck_stream_read_exact(WiFiClient *stream, uint8_t *buf, size_t
     return true;
 }
 
-static bool bambudeck_stream_skip_exact(WiFiClient *stream, size_t len, uint32_t timeoutMs = 4000)
+static bool bambudeck_stream_skip_exact(WiFiClient *stream, size_t len, uint32_t timeoutMs = 6000)
 {
-    uint8_t discard[128];
+    uint8_t discard[512];
     size_t left = len;
     while (left > 0)
     {
@@ -310,13 +355,21 @@ inline void bambudeck_thumbnail_init()
     bambudeck_thumb_dsc.header.cf = LV_IMG_CF_TRUE_COLOR;
     bambudeck_thumb_dsc.data_size = BAMBUDECK_THUMB_BUF_SIZE;
     bambudeck_thumb_dsc.data = NULL;
+
+    bambudeck_thumb_alloc();
 }
 
-inline void bambudeck_thumbnail_clear()
+extern "C" void bambudeck_thumbnail_clear(void)
 {
     bambudeck_has_thumb = false;
     bambudeck_last_thumb_key[0] = '\0';
     bambudeck_thumb_retry_count = 0;
+    bambudeck_thumb_last_attempt_ms = 0;
+}
+
+extern "C" void bambudeck_thumbnail_free(void)
+{
+    bambudeck_thumbnail_clear();
     if (bambudeck_thumb_pixels != NULL)
     {
         free(bambudeck_thumb_pixels);
@@ -390,10 +443,13 @@ inline void bambudeck_thumbnail_check_download()
 
     if (strlen(bambudeck_ha_cover_state) == 0 || strlen(bambudeck_ha_cover_entity) == 0)
     {
-        if (bambudeck_has_thumb)
+        // Only clear thumbnail if the printer is NOT actively printing/preparing/paused!
+        bool isPrinting = (bambuStatus.print_status == BAMBUDECK_PRINT_STATUS_RUNNING ||
+                           bambuStatus.print_status == BAMBUDECK_PRINT_STATUS_PAUSED ||
+                           bambuStatus.print_status == BAMBUDECK_PRINT_STATUS_PREPARE);
+        if (!isPrinting && bambudeck_has_thumb)
         {
-            bambudeck_has_thumb = false;
-            bambudeck_last_thumb_key[0] = '\0';
+            bambudeck_thumbnail_clear();
             bambudeck_ha_ui_dirty = true;
         }
         return;
@@ -402,46 +458,56 @@ inline void bambudeck_thumbnail_check_download()
     char currentKey[128];
     snprintf(currentKey, sizeof(currentKey), "%s|%s", bambudeck_ha_cover_entity, bambudeck_ha_cover_state);
 
-    if (strcmp(currentKey, bambudeck_last_thumb_key) == 0)
-    {
-        if (bambudeck_has_thumb || bambudeck_thumb_retry_count >= 2)
-            return;
-    }
-    else
+    if (strcmp(currentKey, bambudeck_last_thumb_key) != 0)
     {
         strncpy(bambudeck_last_thumb_key, currentKey, sizeof(bambudeck_last_thumb_key) - 1);
         bambudeck_thumb_retry_count = 0;
+        bambudeck_thumb_last_attempt_ms = 0;
+        bambudeck_has_thumb = false;
     }
 
-    bambudeck_thumb_retry_count++;
+    if (bambudeck_has_thumb)
+        return;
 
-    if (ESP.getFreeHeap() < 55000)
+    if (bambudeck_thumb_retry_count >= BAMBUDECK_THUMB_MAX_RETRIES)
+        return;
+
+    if (millis() - bambudeck_thumb_last_attempt_ms < BAMBUDECK_THUMB_RETRY_INTERVAL_MS)
+        return;
+
+    // Ensure display pixel buffer is allocated
+    if (!bambudeck_thumb_alloc())
     {
-        ConsoleError.printf("[BambuDeck][Thumb] Skipping thumbnail decode, low heap (%u bytes)\n", ESP.getFreeHeap());
+        ConsoleError.println(F("[BambuDeck][Thumb] Cannot allocate thumbnail pixel buffer"));
+        return;
+    }
+
+    if (ESP.getFreeHeap() < 38000)
+    {
+        ConsoleError.printf("[BambuDeck][Thumb] Free heap temporarily low (%u bytes), delaying decode\n", ESP.getFreeHeap());
         return;
     }
 
     bambudeck_ha_init_mutex();
-    if (xSemaphoreTake(bambudeck_ha_mutex, pdMS_TO_TICKS(5000)) != pdTRUE)
+    if (xSemaphoreTake(bambudeck_ha_mutex, pdMS_TO_TICKS(3000)) != pdTRUE)
         return;
 
-    BambuStreamingPngCtx *ctx = (BambuStreamingPngCtx *)calloc(1, sizeof(BambuStreamingPngCtx));
+    bambudeck_thumb_last_attempt_ms = millis();
+
+    BambuStreamingPngCtx *ctx = bambudeck_png_ctx_alloc();
     if (ctx == NULL)
     {
-        ConsoleError.println("[BambuDeck][Thumb] Failed to allocate streaming PNG context");
+        ConsoleError.printf("[BambuDeck][Thumb] Failed to allocate streaming PNG context (%u bytes free)\n", ESP.getFreeHeap());
         xSemaphoreGive(bambudeck_ha_mutex);
         return;
     }
-
-    tinfl_init(&ctx->inflator);
-    memset(ctx->trns, 255, sizeof(ctx->trns));
 
     String path = String("/api/image_proxy/") + String(bambudeck_ha_cover_entity);
     String fullUrl = bambudeck_ha_base_url() + path;
 
     HTTPClient http;
     WiFiClient client;
-    http.setTimeout(5000);
+    http.setTimeout(10000);
 
     bool ok = false;
     if (http.begin(client, fullUrl))
@@ -455,13 +521,6 @@ inline void bambudeck_thumbnail_check_download()
             const uint8_t png_sig[8] = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
             if (bambudeck_stream_read_exact(stream, sig, 8) && memcmp(sig, png_sig, 8) == 0)
             {
-                if (!bambudeck_thumb_alloc())
-                {
-                    ConsoleError.println(F("[BambuDeck][THUMB] OOM allocating thumb buffer"));
-                    http.end();
-                    free(ctx);
-                    return;
-                }
                 memset(bambudeck_thumb_pixels, 0, BAMBUDECK_THUMB_BUF_SIZE);
 
                 while (!ctx->done && !ctx->error)
@@ -523,7 +582,7 @@ inline void bambudeck_thumbnail_check_download()
                     }
                     else if (memcmp(ctype, "IDAT", 4) == 0)
                     {
-                        uint8_t buf[256];
+                        uint8_t buf[512];
                         uint32_t rem = clen;
                         while (rem > 0)
                         {
@@ -554,19 +613,39 @@ inline void bambudeck_thumbnail_check_download()
                 if (ctx->has_ihdr && !ctx->error && ctx->cur_y > 0)
                 {
                     ok = true;
-                    ConsoleInfo.printf("[BambuDeck][Thumb] Decoded %ux%u STL cover image -> 120x120 (%u bytes free heap)\n",
+                    ConsoleInfo.printf("[BambuDeck][Thumb] Decoded %ux%u cover image -> 120x120 (%u bytes free heap)\n",
                                        ctx->width, ctx->height, ESP.getFreeHeap());
                 }
+                else
+                {
+                    bambudeck_thumb_retry_count++;
+                    ConsoleError.printf("[BambuDeck][Thumb] PNG decode incomplete (error=%d has_ihdr=%d cur_y=%u, attempt %d/%d)\n",
+                                        ctx->error, ctx->has_ihdr, ctx->cur_y, bambudeck_thumb_retry_count, BAMBUDECK_THUMB_MAX_RETRIES);
+                }
+            }
+            else
+            {
+                bambudeck_thumb_retry_count++;
+                ConsoleError.printf("[BambuDeck][Thumb] Non-PNG signature %02X %02X %02X %02X (attempt %d/%d)\n",
+                                    sig[0], sig[1], sig[2], sig[3], bambudeck_thumb_retry_count, BAMBUDECK_THUMB_MAX_RETRIES);
             }
         }
         else
         {
-            ConsoleError.printf("[BambuDeck][Thumb] GET %s returned HTTP %d\n", path.c_str(), code);
+            bambudeck_thumb_retry_count++;
+            ConsoleInfo.printf("[BambuDeck][Thumb] GET %s returned HTTP %d (attempt %d/%d, HA may still be extracting 3MF)\n",
+                               path.c_str(), code, bambudeck_thumb_retry_count, BAMBUDECK_THUMB_MAX_RETRIES);
         }
         http.end();
     }
+    else
+    {
+        bambudeck_thumb_retry_count++;
+        ConsoleError.printf("[BambuDeck][Thumb] http.begin failed for %s (attempt %d/%d)\n",
+                            fullUrl.c_str(), bambudeck_thumb_retry_count, BAMBUDECK_THUMB_MAX_RETRIES);
+    }
 
-    free(ctx);
+    bambudeck_png_ctx_free(ctx);
     xSemaphoreGive(bambudeck_ha_mutex);
 
     if (ok)
