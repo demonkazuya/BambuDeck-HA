@@ -526,7 +526,7 @@ inline bool bambudeck_ha_poll_status_worker()
     serializeJson(reqDoc, reqBody);
 
     String respBody;
-    int httpCode = bambudeck_ha_post("/api/template", reqBody, &respBody, 3000);
+    int httpCode = bambudeck_ha_post("/api/template", reqBody, &respBody, 5000);
     if (httpCode < 200 || httpCode >= 300)
     {
         bambudeck_has_real_subtask = false;
@@ -556,7 +556,7 @@ inline bool bambudeck_ha_poll_status_worker()
         bambudeck_ha_consecutive_fails = 0;
     }
 
-    DynamicJsonDocument doc(3072);
+    DynamicJsonDocument doc(6144);
     DeserializationError err = deserializeJson(doc, respBody);
     if (err)
     {

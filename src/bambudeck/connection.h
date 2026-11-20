@@ -68,6 +68,29 @@ inline void bambudeck_ota_setup()
         String json = String("{\"ip\":\"") + WiFi.localIP().toString() + "\",\"printer\":\"" + String(bambuDeckConfig.printerName) + "\",\"heap\":" + String(ESP.getFreeHeap()) + "}";
         bambudeck_ota_server.send(200, "application/json", json);
     });
+    bambudeck_ota_server.on("/status", HTTP_GET, []() {
+        DynamicJsonDocument doc(768);
+        doc["ip"] = WiFi.localIP().toString();
+        doc["printer"] = bambuDeckConfig.printerName;
+        doc["heap"] = ESP.getFreeHeap();
+        doc["uptime_s"] = millis() / 1000;
+        doc["print_status"] = (int)bambuStatus.print_status;
+        doc["state"] = bambudeck_ha_pending_state;
+        doc["pct"] = bambuStatus.mc_print_percent;
+        doc["cur_layer"] = bambuStatus.current_layer;
+        doc["tot_layers"] = bambuStatus.total_layers;
+        doc["rem_s"] = bambuStatus.mc_left_time;
+        doc["subtask"] = bambuStatus.subtask_name;
+        doc["has_thumb"] = bambudeck_has_thumb;
+        doc["thumb_retries"] = bambudeck_thumb_retry_count;
+        doc["consec_fails"] = bambudeck_ha_consecutive_fails;
+        doc["last_http"] = bambudeck_last_http_code;
+        doc["cover_state"] = bambudeck_ha_cover_state;
+        doc["last_thumb_key"] = bambudeck_last_thumb_key;
+        String json;
+        serializeJson(doc, json);
+        bambudeck_ota_server.send(200, "application/json", json);
+    });
     bambudeck_ota_server.on(
         "/update", HTTP_POST,
         []() {

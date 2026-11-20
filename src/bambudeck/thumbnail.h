@@ -301,7 +301,7 @@ static inline uint32_t bambudeck_read_be32(const uint8_t *p)
     return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | (uint32_t)p[3];
 }
 
-static bool bambudeck_stream_read_exact(WiFiClient *stream, uint8_t *buf, size_t len, uint32_t timeoutMs = 6000)
+static bool bambudeck_stream_read_exact(WiFiClient *stream, uint8_t *buf, size_t len, uint32_t timeoutMs = 2500)
 {
     size_t got = 0;
     unsigned long start = millis();
@@ -327,7 +327,7 @@ static bool bambudeck_stream_read_exact(WiFiClient *stream, uint8_t *buf, size_t
     return true;
 }
 
-static bool bambudeck_stream_skip_exact(WiFiClient *stream, size_t len, uint32_t timeoutMs = 6000)
+static bool bambudeck_stream_skip_exact(WiFiClient *stream, size_t len, uint32_t timeoutMs = 2500)
 {
     uint8_t discard[512];
     size_t left = len;
@@ -441,12 +441,13 @@ inline void bambudeck_thumbnail_check_download()
     if (!bambudeck_use_ha_direct() || WiFi.status() != WL_CONNECTED)
         return;
 
+    bool isPrinting = (bambuStatus.print_status == BAMBUDECK_PRINT_STATUS_RUNNING ||
+                       bambuStatus.print_status == BAMBUDECK_PRINT_STATUS_PAUSED ||
+                       bambuStatus.print_status == BAMBUDECK_PRINT_STATUS_PREPARE);
+
     if (strlen(bambudeck_ha_cover_state) == 0 || strlen(bambudeck_ha_cover_entity) == 0)
     {
         // Only clear thumbnail if the printer is NOT actively printing/preparing/paused!
-        bool isPrinting = (bambuStatus.print_status == BAMBUDECK_PRINT_STATUS_RUNNING ||
-                           bambuStatus.print_status == BAMBUDECK_PRINT_STATUS_PAUSED ||
-                           bambuStatus.print_status == BAMBUDECK_PRINT_STATUS_PREPARE);
         if (!isPrinting && bambudeck_has_thumb)
         {
             bambudeck_thumbnail_clear();
@@ -455,18 +456,30 @@ inline void bambudeck_thumbnail_check_download()
         return;
     }
 
+    // Key thumbnail by print subtask name if printing, so periodic HA cover_state timestamp updates don't reload & clear it
     char currentKey[128];
-    snprintf(currentKey, sizeof(currentKey), "%s|%s", bambudeck_ha_cover_entity, bambudeck_ha_cover_state);
+    if (isPrinting && strlen(bambuStatus.subtask_name) > 0)
+    {
+        snprintf(currentKey, sizeof(currentKey), "%s|%s", bambudeck_ha_cover_entity, bambuStatus.subtask_name);
+    }
+    else
+    {
+        snprintf(currentKey, sizeof(currentKey), "%s|%s", bambudeck_ha_cover_entity, bambudeck_ha_cover_state);
+    }
 
     if (strcmp(currentKey, bambudeck_last_thumb_key) != 0)
     {
         strncpy(bambudeck_last_thumb_key, currentKey, sizeof(bambudeck_last_thumb_key) - 1);
         bambudeck_thumb_retry_count = 0;
         bambudeck_thumb_last_attempt_ms = 0;
-        bambudeck_has_thumb = false;
+        // Keep existing thumbnail while downloading new one so screen doesn't flicker or lose icon!
+        if (!isPrinting)
+        {
+            bambudeck_has_thumb = false;
+        }
     }
 
-    if (bambudeck_has_thumb)
+    if (bambudeck_has_thumb && isPrinting)
         return;
 
     if (bambudeck_thumb_retry_count >= BAMBUDECK_THUMB_MAX_RETRIES)
@@ -489,7 +502,7 @@ inline void bambudeck_thumbnail_check_download()
     }
 
     bambudeck_ha_init_mutex();
-    if (xSemaphoreTake(bambudeck_ha_mutex, pdMS_TO_TICKS(3000)) != pdTRUE)
+    if (xSemaphoreTake(bambudeck_ha_mutex, pdMS_TO_TICKS(2000)) != pdTRUE)
         return;
 
     bambudeck_thumb_last_attempt_ms = millis();
@@ -507,7 +520,7 @@ inline void bambudeck_thumbnail_check_download()
 
     HTTPClient http;
     WiFiClient client;
-    http.setTimeout(10000);
+    http.setTimeout(4000);
 
     bool ok = false;
     if (http.begin(client, fullUrl))
